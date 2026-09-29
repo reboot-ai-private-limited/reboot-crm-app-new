@@ -1,15 +1,25 @@
 import { IconName } from '@/components/ui/Icon';
-import { Activity, LeadStatus } from '@/lib/leads';
+import { Activity, LeadPriority, LeadStatus, statusLabel } from '@/lib/leads';
 import { ColorName } from '@/theme';
 
 export const STATUS_TONE: Record<LeadStatus, [ColorName, ColorName]> = {
-  NEW: ['primary', 'primarySoft'],
+  FRESH: ['primary', 'primarySoft'],
+  CONTACTED: ['purple', 'purpleSoft'],
+  MEETING: ['warning', 'warningSoft'],
   FOLLOW_UP: ['warning', 'warningSoft'],
-  PROPOSAL_GENERATED: ['purple', 'purpleSoft'],
-  CONVERTED: ['success', 'successSoft'],
-  LOST: ['slate', 'slateSoft'],
-  INVALID_DATA: ['danger', 'dangerSoft'],
+  PROPOSAL: ['purple', 'purpleSoft'],
+  DEAL_CLOSED: ['success', 'successSoft'],
+  NOT_INTERESTED: ['slate', 'slateSoft'],
+  INVALID: ['danger', 'dangerSoft'],
 };
+
+export const PRIORITY_TONE: Record<LeadPriority, [ColorName, ColorName]> = {
+  HOT: ['danger', 'dangerSoft'],
+  WARM: ['warning', 'warningSoft'],
+  COLD: ['slate', 'slateSoft'],
+};
+
+export const statusTone = (s?: string): [ColorName, ColorName] => (s && s in STATUS_TONE ? STATUS_TONE[s as LeadStatus] : ['slate', 'slateSoft']);
 
 const EVENT: Record<string, { label: string; icon: IconName; tone: ColorName }> = {
   CREATED: { label: 'Lead created', icon: 'plus', tone: 'primary' },
@@ -17,7 +27,7 @@ const EVENT: Record<string, { label: string; icon: IconName; tone: ColorName }> 
   UNASSIGNED: { label: 'Moved to lead pool', icon: 'userx', tone: 'slate' },
   REASSIGNED: { label: 'Reassigned', icon: 'users', tone: 'primary' },
   NOTE_ADDED: { label: 'Note added', icon: 'edit', tone: 'purple' },
-  FOLLOW_UP_SCHEDULED: { label: 'Follow-up scheduled', icon: 'clock', tone: 'warning' },
+  FOLLOW_UP_SCHEDULED: { label: 'Next action set', icon: 'clock', tone: 'warning' },
   MARKED_LOST: { label: 'Marked as lost', icon: 'x', tone: 'slate' },
   MARKED_INVALID: { label: 'Marked as invalid', icon: 'alert', tone: 'danger' },
   STATUS_CHANGED: { label: 'Status changed', icon: 'refresh', tone: 'primary' },
@@ -43,6 +53,11 @@ export function eventDetail(a: Activity): string | undefined {
       const d = str(m.followUpDate) ? new Date(m.followUpDate as string) : null;
       const when = d && !isNaN(d.getTime()) ? d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
       return [when && `For ${when}`, str(m.note)].filter(Boolean).join(' · ') || undefined;
+    }
+    case 'STATUS_CHANGED': {
+      const move = m.newStatus ? `${statusLabel(str(m.oldStatus)) || '—'} → ${statusLabel(str(m.newStatus))}` : '';
+      const value = typeof m.dealValue === 'number' ? `₹${m.dealValue.toLocaleString('en-IN')}` : '';
+      return [move, value, str(m.reason)].filter(Boolean).join(' · ') || undefined;
     }
     case 'MARKED_LOST':
     case 'MARKED_INVALID':

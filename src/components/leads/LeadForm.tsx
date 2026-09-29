@@ -10,7 +10,8 @@ import { Field, Header } from '@/components/ui/layout';
 import { SelectField } from '@/components/ui/SelectField';
 import { CATEGORIES } from '@/constants/categories';
 import { CITIES } from '@/constants/cities';
-import { LeadInput } from '@/lib/leads';
+import { ApiError } from '@/lib/api';
+import { LeadInput, statusLabel } from '@/lib/leads';
 import { colors } from '@/theme';
 
 type Errors = Partial<Record<keyof LeadInput, string>>;
@@ -52,6 +53,8 @@ export function LeadForm({
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [serverError, setServerError] = useState('');
+  // 409 duplicate → the existing lead, so the user can open it instead.
+  const [duplicate, setDuplicate] = useState<{ _id: string; companyName?: string; contactName?: string; status?: string; assignedTo?: { fullName?: string } | null } | null>(null);
 
   const set = (k: keyof LeadInput) => (val: string) => {
     const next = { ...v, [k]: k === 'mobile' ? val.replace(/\D/g, '') : val };
@@ -66,9 +69,12 @@ export function LeadForm({
     if (Object.keys(e).length) return;
     setSaving(true);
     setServerError('');
+    setDuplicate(null);
     try {
       await onSubmit(v);
     } catch (err) {
+      const existing = err instanceof ApiError && err.status === 409 ? (err.data as { existingLead?: typeof duplicate } | undefined)?.existingLead : undefined;
+      if (existing) setDuplicate(existing);
       setServerError((err as Error).message);
     } finally {
       setSaving(false);
@@ -104,7 +110,19 @@ export function LeadForm({
           <SelectField label="Category" required icon="briefcase" value={v.category} options={CATEGORIES} onChange={set('category')} error={errors.category} />
           <Field label="Address" placeholder="Street, area (optional)" value={v.address ?? ''} onChangeText={set('address')} />
 
-          {serverError ? (
+          {duplicate ? (
+            <View style={styles.duplicate}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <AppText weight="600" color="warning">
+                  This lead already exists
+                </AppText>
+                <AppText variant="caption" color="textMuted">
+                  {[duplicate.companyName || duplicate.contactName, statusLabel(duplicate.status), duplicate.assignedTo?.fullName ? `with ${duplicate.assignedTo.fullName}` : 'in the lead pool'].filter(Boolean).join(' · ')}
+                </AppText>
+              </View>
+              <Button label="Open lead" variant="outline" small onPress={() => router.replace({ pathname: '/lead/[id]', params: { id: duplicate._id } })} />
+            </View>
+          ) : serverError ? (
             <View style={styles.serverError}>
               <Icon name="alert" size={16} color="danger" />
               <AppText variant="label" color="danger" style={{ flex: 1 }}>
@@ -126,5 +144,6 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingTop: 4, gap: 14 },
   group: { marginTop: 6, letterSpacing: 0.6 },
   footer: { flexDirection: 'row', padding: 20, paddingTop: 12, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
+  duplicate: { flexDirection: 'row', gap: 12, alignItems: 'center', padding: 12, borderRadius: 12, backgroundColor: colors.warningSoft },
   serverError: { flexDirection: 'row', gap: 8, alignItems: 'center', padding: 12, borderRadius: 12, backgroundColor: colors.dangerSoft },
 });

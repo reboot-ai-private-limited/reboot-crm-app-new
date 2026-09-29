@@ -8,6 +8,10 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    /** Error code from the backend, e.g. DUPLICATE_LEAD_MOBILE, INVALID_STATUS_TRANSITION. */
+    public code?: string,
+    /** Extra data from the backend error response (e.g. existingLead on a 409 duplicate). */
+    public data?: unknown,
   ) {
     super(message);
   }
@@ -88,7 +92,7 @@ export async function api<T>(path: string, init: Init = {}): Promise<T> {
     }
   }
 
-  const json = (await res.json().catch(() => null)) as { message?: string; data?: T } | null;
-  if (!res.ok) throw new ApiError(json?.message ?? `Request failed (${res.status})`, res.status);
+  const json = (await res.json().catch(() => null)) as { message?: string; code?: string; data?: T } | null;
+  if (!res.ok) throw new ApiError(json?.message ?? `Request failed (${res.status})`, res.status, json?.code, json?.data);
   return json?.data as T;
 }

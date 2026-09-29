@@ -9,7 +9,7 @@ export default function AddLead() {
   return (
     <LeadForm
       title="Add lead"
-      subtitle="Saved with your current location"
+      subtitle="Saved as a field lead with your current location"
       submitLabel="Save lead"
       initial={{ companyName: '', contactName: '', mobile: '', email: '', city: '', category: '', address: '' }}
       onSubmit={async (v) => {

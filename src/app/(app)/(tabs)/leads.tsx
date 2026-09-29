@@ -6,13 +6,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '@/components/ui/AppText';
 import { Icon } from '@/components/ui/Icon';
 import { Avatar, Card, Field, FilterChips, Header, Row } from '@/components/ui/layout';
-import { STATUS_TONE } from '@/components/leads/meta';
-import { fetchLeads, Lead, LeadStatus, STATUS_LABEL, titleCase } from '@/lib/leads';
+import { PRIORITY_TONE, statusTone } from '@/components/leads/meta';
+import { fetchLeads, Lead, LEAD_STATUSES, LeadStatus, statusLabel, titleCase } from '@/lib/leads';
 import { useAuth } from '@/store/auth';
-import { colors } from '@/theme';
+import { ColorName, colors } from '@/theme';
 
-const FILTERS: ('All' | LeadStatus)[] = ['All', 'NEW', 'FOLLOW_UP', 'PROPOSAL_GENERATED', 'CONVERTED', 'LOST', 'INVALID_DATA'];
-const filterLabel = (f: 'All' | LeadStatus) => (f === 'All' ? 'All' : STATUS_LABEL[f]);
+const FILTERS: ('All' | LeadStatus)[] = ['All', ...LEAD_STATUSES];
+const filterLabel = (f: 'All' | LeadStatus) => (f === 'All' ? 'All' : statusLabel(f));
 
 function formatDate(iso?: string | null) {
   if (!iso) return null;
@@ -20,11 +20,14 @@ function formatDate(iso?: string | null) {
   return isNaN(d.getTime()) ? null : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
-function LeadRow({ lead, onPress }: { lead: Lead; onPress: () => void }) {
-  const [fg, bg] = STATUS_TONE[lead.status] ?? ['slate', 'slateSoft'];
+/** `now` is captured when the list loads (render must stay pure). */
+function LeadRow({ lead, now, onPress }: { lead: Lead; now: number; onPress: () => void }) {
+  const [fg, bg] = statusTone(lead.status);
   const name = lead.companyName || lead.contactName || 'Unnamed lead';
   const sub = [lead.contactName, titleCase(lead.city)].filter(Boolean).join(' · ');
-  const followUp = formatDate(lead.nextFollowUpDate);
+  const nextAction = formatDate(lead.nextActionDate);
+  const overdue = !!lead.nextActionDate && new Date(lead.nextActionDate).getTime() < now;
+  const [pfg, pbg]: [ColorName, ColorName] = lead.priority ? PRIORITY_TONE[lead.priority] : ['slate', 'slateSoft'];
 
   return (
     <Card style={{ gap: 10 }} onPress={onPress}>
@@ -49,22 +52,28 @@ function LeadRow({ lead, onPress }: { lead: Lead; onPress: () => void }) {
       <Row gap={8}>
         <View style={[styles.chip, { backgroundColor: colors[bg] }]}>
           <AppText variant="caption" weight="500" color={fg}>
-            {STATUS_LABEL[lead.status] ?? lead.status}
+            {statusLabel(lead.status)}
           </AppText>
         </View>
-        {lead.category ? (
-          <AppText variant="caption" color="textMuted">
-            {lead.category}
-          </AppText>
+        {lead.priority ? (
+          <View style={[styles.chip, { backgroundColor: colors[pbg] }]}>
+            <AppText variant="caption" weight="600" color={pfg}>
+              {lead.priority}
+            </AppText>
+          </View>
         ) : null}
         <View style={{ flex: 1 }} />
-        {followUp ? (
+        {nextAction ? (
           <>
-            <Icon name="clock" size={14} color="textSubtle" />
-            <AppText variant="caption" color="textMuted">
-              {followUp}
+            <Icon name="clock" size={14} color={overdue ? 'danger' : 'textSubtle'} />
+            <AppText variant="caption" color={overdue ? 'danger' : 'textMuted'} weight={overdue ? '600' : '400'}>
+              {nextAction}
             </AppText>
           </>
+        ) : lead.category ? (
+          <AppText variant="caption" color="textMuted" numberOfLines={1} style={{ maxWidth: 140 }}>
+            {lead.category}
+          </AppText>
         ) : null}
       </Row>
     </Card>
@@ -84,6 +93,8 @@ export default function LeadsScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  // Reference time for 'overdue', refreshed with each response.
+  const [now, setNow] = useState(() => new Date().getTime());
   const requestId = useRef(0);
   // The list is 'loading' until a response for the current search/filter/role has arrived.
   const key = `${isAdmin}|${query}|${status}`;
@@ -106,6 +117,7 @@ export default function LeadsScreen() {
         const res = await fetchLeads({ admin: isAdmin, page: p, search: query, status: status === 'All' ? undefined : status });
         if (id !== requestId.current) return; // a newer search/filter superseded this one
         setLeads((prev) => (p === 1 ? res.data : [...prev, ...res.data]));
+        setNow(new Date().getTime());
         setTotal(res.total);
         setPage(p);
         setError('');
@@ -129,6 +141,7 @@ export default function LeadsScreen() {
       .then((res) => {
         if (id !== requestId.current) return;
         setLeads(res.data);
+        setNow(new Date().getTime());
         setTotal(res.total);
         setPage(1);
         setError('');
@@ -169,7 +182,7 @@ export default function LeadsScreen() {
         <FlatList
           data={leads}
           keyExtractor={(l) => l._id}
-          renderItem={({ item }) => <LeadRow lead={item} onPress={() => router.push({ pathname: '/lead/[id]', params: { id: item._id } })} />}
+          renderItem={({ item }) => <LeadRow lead={item} now={now} onPress={() => router.push({ pathname: '/lead/[id]', params: { id: item._id } })} />}
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(1, 'refresh')} tintColor={colors.primary} />}
           onEndReachedThreshold={0.4}
