@@ -1,0 +1,65 @@
+import { IconName } from '@/components/ui/Icon';
+import { Activity, LeadStatus } from '@/lib/leads';
+import { ColorName } from '@/theme';
+
+export const STATUS_TONE: Record<LeadStatus, [ColorName, ColorName]> = {
+  NEW: ['primary', 'primarySoft'],
+  FOLLOW_UP: ['warning', 'warningSoft'],
+  PROPOSAL_GENERATED: ['purple', 'purpleSoft'],
+  CONVERTED: ['success', 'successSoft'],
+  LOST: ['slate', 'slateSoft'],
+  INVALID_DATA: ['danger', 'dangerSoft'],
+};
+
+const EVENT: Record<string, { label: string; icon: IconName; tone: ColorName }> = {
+  CREATED: { label: 'Lead created', icon: 'plus', tone: 'primary' },
+  ASSIGNED: { label: 'Assigned', icon: 'user', tone: 'primary' },
+  UNASSIGNED: { label: 'Moved to lead pool', icon: 'userx', tone: 'slate' },
+  REASSIGNED: { label: 'Reassigned', icon: 'users', tone: 'primary' },
+  NOTE_ADDED: { label: 'Note added', icon: 'edit', tone: 'purple' },
+  FOLLOW_UP_SCHEDULED: { label: 'Follow-up scheduled', icon: 'clock', tone: 'warning' },
+  MARKED_LOST: { label: 'Marked as lost', icon: 'x', tone: 'slate' },
+  MARKED_INVALID: { label: 'Marked as invalid', icon: 'alert', tone: 'danger' },
+  STATUS_CHANGED: { label: 'Status changed', icon: 'refresh', tone: 'primary' },
+  DETAILS_UPDATED: { label: 'Details updated', icon: 'edit', tone: 'slate' },
+  PROPOSAL_GENERATED: { label: 'Proposal generated', icon: 'file', tone: 'purple' },
+  PROPOSAL_EDITED: { label: 'Proposal edited', icon: 'file', tone: 'purple' },
+  PROPOSAL_SENT: { label: 'Proposal sent', icon: 'send', tone: 'purple' },
+};
+
+export function eventMeta(type: string) {
+  return EVENT[type] ?? { label: type.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase()), icon: 'check' as IconName, tone: 'slate' as ColorName };
+}
+
+const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+
+/** One-line detail under the activity title, from its metadata. */
+export function eventDetail(a: Activity): string | undefined {
+  const m = a.metadata ?? {};
+  switch (a.eventType) {
+    case 'NOTE_ADDED':
+      return str(m.note);
+    case 'FOLLOW_UP_SCHEDULED': {
+      const d = str(m.followUpDate) ? new Date(m.followUpDate as string) : null;
+      const when = d && !isNaN(d.getTime()) ? d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+      return [when && `For ${when}`, str(m.note)].filter(Boolean).join(' · ') || undefined;
+    }
+    case 'MARKED_LOST':
+    case 'MARKED_INVALID':
+      return str(m.reason);
+    case 'DETAILS_UPDATED':
+      return Array.isArray(m.updatedFields) ? `Changed: ${(m.updatedFields as string[]).join(', ')}` : undefined;
+    default:
+      return undefined;
+  }
+}
+
+export function timeAgo(iso: string) {
+  const d = new Date(iso);
+  const s = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (s < 60) return 'Just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} hr ago`;
+  if (s < 7 * 86400) return `${Math.floor(s / 86400)} d ago`;
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
