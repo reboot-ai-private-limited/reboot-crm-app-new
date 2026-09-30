@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { Icon } from '@/components/ui/Icon';
-import { Avatar, Card, Field, FilterChips, Header, Row } from '@/components/ui/layout';
+import { Avatar, Card, Field, FilterChips, Header, IconButton, Row } from '@/components/ui/layout';
 import { PRIORITY_TONE, statusTone } from '@/components/leads/meta';
 import { fetchLeads, Lead, LEAD_STATUSES, LeadStatus, statusLabel, titleCase } from '@/lib/leads';
 import { useAuth } from '@/store/auth';
@@ -86,6 +86,8 @@ export default function LeadsScreen() {
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<'All' | LeadStatus>('All');
+  const [pool, setPool] = useState(false);
+  const mineLabel = isAdmin ? 'All leads' : 'My leads';
 
   const [leads, setLeads] = useState<Lead[]>([]);
   const [total, setTotal] = useState(0);
@@ -97,7 +99,7 @@ export default function LeadsScreen() {
   const [now, setNow] = useState(() => new Date().getTime());
   const requestId = useRef(0);
   // The list is 'loading' until a response for the current search/filter/role has arrived.
-  const key = `${isAdmin}|${query}|${status}`;
+  const key = `${isAdmin}|${pool}|${query}|${status}`;
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const loading = loadedKey !== key;
 
@@ -114,7 +116,7 @@ export default function LeadsScreen() {
       if (mode === 'refresh') setRefreshing(true);
       if (mode !== 'initial') setError('');
       try {
-        const res = await fetchLeads({ admin: isAdmin, page: p, search: query, status: status === 'All' ? undefined : status });
+        const res = await fetchLeads({ admin: isAdmin, pool, page: p, search: query, status: status === 'All' ? undefined : status });
         if (id !== requestId.current) return; // a newer search/filter superseded this one
         setLeads((prev) => (p === 1 ? res.data : [...prev, ...res.data]));
         setNow(new Date().getTime());
@@ -131,13 +133,13 @@ export default function LeadsScreen() {
         }
       }
     },
-    [isAdmin, query, status, key],
+    [isAdmin, pool, query, status, key],
   );
 
   // (Re)load page 1 whenever search, filter or role changes. State is only set after the await.
   useEffect(() => {
     const id = ++requestId.current;
-    fetchLeads({ admin: isAdmin, page: 1, search: query, status: status === 'All' ? undefined : status })
+    fetchLeads({ admin: isAdmin, pool, page: 1, search: query, status: status === 'All' ? undefined : status })
       .then((res) => {
         if (id !== requestId.current) return;
         setLeads(res.data);
@@ -152,7 +154,7 @@ export default function LeadsScreen() {
       .finally(() => {
         if (id === requestId.current) setLoadedKey(key);
       });
-  }, [isAdmin, query, status, key]);
+  }, [isAdmin, pool, query, status, key]);
 
   // Coming back from Add / Details: quietly refresh page 1 so new or changed leads show up.
   const firstFocus = useRef(true);
@@ -170,8 +172,9 @@ export default function LeadsScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <Header title={isAdmin ? 'All leads' : 'My leads'} subtitle={loading ? 'Loading…' : `${total} ${total === 1 ? 'lead' : 'leads'}`} />
+      <Header title={pool ? 'Lead pool' : mineLabel} subtitle={loading ? 'Loading…' : `${total} ${total === 1 ? 'lead' : 'leads'}`} right={<IconButton icon="clock" onPress={() => router.push('/followups')} />} />
       <View style={styles.controls}>
+        <FilterChips items={[mineLabel, 'Pool']} value={pool ? 'Pool' : mineLabel} onChange={(l) => setPool(l === 'Pool')} />
         <Field icon="search" placeholder="Search name, company or phone" value={search} onChangeText={setSearch} />
         <FilterChips items={FILTERS.map(filterLabel)} value={filterLabel(status)} onChange={(l) => setStatus(FILTERS.find((f) => filterLabel(f) === l) ?? 'All')} />
       </View>
@@ -193,7 +196,7 @@ export default function LeadsScreen() {
             <View style={styles.empty}>
               <Icon name={error ? 'alert' : 'users'} size={32} color={error ? 'danger' : 'textSubtle'} />
               <AppText color={error ? 'danger' : 'textMuted'} align="center">
-                {error || (query || status !== 'All' ? 'No leads match your search.' : 'No leads assigned to you yet.')}
+                {error || (query || status !== 'All' ? 'No leads match your search.' : pool ? 'The lead pool is empty.' : 'No leads assigned to you yet.')}
               </AppText>
               {error ? (
                 <AppText color="primary" weight="600" onPress={() => load(1, 'initial')}>

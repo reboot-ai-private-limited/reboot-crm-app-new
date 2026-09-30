@@ -70,11 +70,34 @@ export const statusLabel = (s?: string) => (s && s in STATUS_LABEL ? STATUS_LABE
 
 export const PAGE_SIZE = 20;
 
-/** Employees: GET /leads/my. Admin: GET /leads/all (every assigned lead). */
-export function fetchLeads(opts: { admin: boolean; page: number; search?: string; status?: LeadStatus; priority?: LeadPriority }) {
-  return api<LeadPage>(opts.admin ? '/leads/all' : '/leads/my', {
+/** Employees: GET /leads/my. Admin: GET /leads/all (every assigned lead). `pool`: GET /leads/pool (unassigned). */
+export function fetchLeads(opts: { admin: boolean; pool?: boolean; page: number; search?: string; status?: LeadStatus; priority?: LeadPriority }) {
+  const path = opts.pool ? '/leads/pool' : opts.admin ? '/leads/all' : '/leads/my';
+  return api<LeadPage>(path, {
     query: { page: opts.page, limit: PAGE_SIZE, search: opts.search?.trim(), status: opts.status, priority: opts.priority },
   });
+}
+
+/**
+ * Open leads that have a next action date (employees: /leads/my, admin: /leads/all).
+ * The date-range filter only matches leads that have a date; closed leads are dropped here.
+ */
+export async function fetchFollowUps(admin: boolean): Promise<Lead[]> {
+  const found: Lead[] = [];
+  for (let page = 1; page <= 5; page++) {
+    const res = await api<LeadPage>(admin ? '/leads/all' : '/leads/my', {
+      query: { page, limit: 100, nextActionFrom: '2000-01-01', nextActionTo: '2100-01-01' },
+    });
+    found.push(...res.data);
+    if (found.length >= res.total || res.data.length === 0) break;
+  }
+  return found.filter((l) => l.nextActionDate && !CLOSED_STATUSES.includes(l.status));
+}
+
+/** Number of the employee's own leads, optionally in one status (reads `total` from a 1-row page). */
+export async function countMyLeads(status?: LeadStatus) {
+  const res = await api<LeadPage>('/leads/my', { query: { page: 1, limit: 1, status } });
+  return res.total;
 }
 
 export function fetchLead(id: string) {

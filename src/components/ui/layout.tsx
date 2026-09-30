@@ -258,7 +258,8 @@ const styles = StyleSheet.create({
   gradient: { borderRadius: radius.xl, padding: 20, gap: 10 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   avatar: { backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
-  iconBadge: { padding: 10, borderRadius: radius.md },
+  // alignSelf keeps the badge icon-sized inside column layouts (it would otherwise stretch full width).
+  iconBadge: { padding: 10, borderRadius: radius.md, alignSelf: 'flex-start' },
   segment: { flexDirection: 'row', backgroundColor: colors.slateSoft, borderRadius: radius.md, padding: 4, gap: 4 },
   segItem: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 9 },
   pill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill },
