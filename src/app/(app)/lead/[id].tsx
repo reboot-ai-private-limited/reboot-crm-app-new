@@ -532,6 +532,23 @@ export default function LeadDetails() {
           </Card>
         )}
 
+        <Card
+          onPress={() =>
+            router.push({
+              pathname: "/lead/proposals/[id]",
+              params: { id: lead._id },
+            })
+          }
+        >
+          <Row>
+            <Icon name="file" size={20} color="primary" />
+            <AppText weight="500" style={{ flex: 1 }}>
+              Proposals
+            </AppText>
+            <Icon name="chevR" size={16} color="textSubtle" />
+          </Row>
+        </Card>
+
         {/* Activity */}
         <AppText variant="section">Activity</AppText>
         <Card style={{ gap: 0 }}>

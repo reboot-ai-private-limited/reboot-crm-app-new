@@ -8,6 +8,9 @@ export default function AppLayout() {
       <Stack.Screen name="lead/[id]" />
       <Stack.Screen name="lead/new" />
       <Stack.Screen name="lead/edit/[id]" />
+      <Stack.Screen name="lead/proposals/[id]" />
+      <Stack.Screen name="customers/index" />
+      <Stack.Screen name="customers/[id]" />
     </Stack>
   );
 }
