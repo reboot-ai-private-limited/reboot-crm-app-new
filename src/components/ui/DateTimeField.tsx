@@ -12,8 +12,29 @@ export function formatDateTime(d: Date) {
   return d.toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-/** Date + time picker. Android: native date then time dialogs. iOS: inline picker in a sheet. */
-export function DateTimeField({ label, value, onChange, minimumDate }: { label: string; value: Date; onChange: (d: Date) => void; minimumDate?: Date }) {
+export function formatDate(d: Date) {
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/**
+ * Date + time picker (or date only with `dateOnly`). Android: native date then time dialogs.
+ * iOS: inline picker in a sheet.
+ */
+export function DateTimeField({
+  label,
+  value,
+  onChange,
+  minimumDate,
+  maximumDate,
+  dateOnly,
+}: {
+  label: string;
+  value: Date;
+  onChange: (d: Date) => void;
+  minimumDate?: Date;
+  maximumDate?: Date;
+  dateOnly?: boolean;
+}) {
   const [iosOpen, setIosOpen] = useState(false);
   const [draft, setDraft] = useState(value);
 
@@ -23,7 +44,9 @@ export function DateTimeField({ label, value, onChange, minimumDate }: { label: 
         value,
         mode: 'date',
         minimumDate,
+        maximumDate,
         onValueChange: (_e, date) => {
+          if (dateOnly) return onChange(date);
           DateTimePickerAndroid.open({
             value: date,
             mode: 'time',
@@ -48,13 +71,13 @@ export function DateTimeField({ label, value, onChange, minimumDate }: { label: 
       </AppText>
       <Pressable onPress={open} style={styles.box}>
         <Icon name="calendar" size={18} color="textSubtle" />
-        <AppText style={{ flex: 1 }}>{formatDateTime(value)}</AppText>
+        <AppText style={{ flex: 1 }}>{dateOnly ? formatDate(value) : formatDateTime(value)}</AppText>
         <Icon name="chevD" size={18} color="textSubtle" />
       </Pressable>
 
       {Platform.OS === 'ios' ? (
         <Sheet visible={iosOpen} title={label} onClose={() => setIosOpen(false)}>
-          <DateTimePicker value={draft} mode="datetime" display="inline" minimumDate={minimumDate} onValueChange={(_e, d) => setDraft(d)} />
+          <DateTimePicker value={draft} mode={dateOnly ? 'date' : 'datetime'} display="inline" minimumDate={minimumDate} maximumDate={maximumDate} onValueChange={(_e, d) => setDraft(d)} />
           <Button
             label="Done"
             onPress={() => {

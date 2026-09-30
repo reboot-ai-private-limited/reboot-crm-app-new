@@ -52,6 +52,8 @@ export type CustomerDetails = {
     status: InvoiceStatus;
     dueDate?: string;
     customerServiceId?: { serviceNameSnapshot?: string } | null;
+    /** Deal invoices: one line per service. */
+    lines?: { serviceName: string; lineTotal: number }[];
   }[];
 };
 

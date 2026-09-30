@@ -1,4 +1,5 @@
 import { api } from './api';
+import { dealPayload } from './deal';
 import { getLocation } from './location';
 
 // Mirrors backend ILead + lifecycle (backend/docs/05-LEAD-LIFECYCLE.md).
@@ -35,8 +36,25 @@ export type Activity = {
   eventType: string;
   metadata?: Record<string, unknown> | null;
   actorId?: { _id: string; fullName?: string } | null;
+  /** Where the user was when they did this (set by field actions and the web). */
+  location?: { lat?: number; lng?: number } | null;
   createdAt: string;
 };
+
+/**
+ * A visit is saved as a note with the phone's GPS, its text starting with this marker
+ * (no separate backend type yet). The web shows the marker as plain text.
+ */
+export const VISIT_PREFIX = 'Visit: ';
+
+export const isVisit = (a: { eventType: string; metadata?: Record<string, unknown> | null }) =>
+  a.eventType === 'NOTE_ADDED' && typeof a.metadata?.note === 'string' && a.metadata.note.startsWith(VISIT_PREFIX);
+
+/** Google Maps link for an activity's location, or null when it has none. */
+export function mapUrl(loc?: { lat?: number; lng?: number } | null) {
+  if (typeof loc?.lat !== 'number' || typeof loc?.lng !== 'number') return null;
+  return `https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}`;
+}
 
 export type LeadDetails = { lead: Lead; activities: Activity[]; allowedNextStatuses: LeadStatus[] };
 export type LeadPage = { data: Lead[]; total: number };
@@ -79,7 +97,7 @@ export function fetchLeads(opts: { admin: boolean; pool?: boolean; page: number;
 }
 
 /**
- * Open leads that have a next action date (employees: /leads/my, admin: /leads/all).
+ * Open leads that have a scheduled follow-up (nextActionDate) (employees: /leads/my, admin: /leads/all).
  * The date-range filter only matches leads that have a date; closed leads are dropped here.
  */
 export async function fetchFollowUps(admin: boolean): Promise<Lead[]> {
@@ -97,6 +115,18 @@ export async function fetchFollowUps(admin: boolean): Promise<Lead[]> {
 /** Number of the employee's own leads, optionally in one status (reads `total` from a 1-row page). */
 export async function countMyLeads(status?: LeadStatus) {
   const res = await api<LeadPage>('/leads/my', { query: { page: 1, limit: 1, status } });
+  return res.total;
+}
+
+/** Admin: number of assigned leads (/leads/all), optionally in one status. */
+export async function countAllLeads(status?: LeadStatus) {
+  const res = await api<LeadPage>('/leads/all', { query: { page: 1, limit: 1, status } });
+  return res.total;
+}
+
+/** Number of unassigned leads waiting in the pool. */
+export async function countPoolLeads() {
+  const res = await api<LeadPage>('/leads/pool', { query: { page: 1, limit: 1 } });
   return res.total;
 }
 
@@ -141,6 +171,12 @@ export function addNote(id: string, note: string) {
 }
 
 /** "Call back on…" — FRESH becomes CONTACTED; never moves to FOLLOW_UP. */
+/** Field sales: a note tagged as a visit, with the phone's current GPS (throws a readable error if unavailable). */
+export async function logVisit(id: string, note: string) {
+  const location = await getLocation();
+  return api(`/leads/${id}/notes`, { method: 'POST', body: { note: `${VISIT_PREFIX}${note.trim()}`, location } });
+}
+
 export function setNextAction(id: string, date: Date, note?: string) {
   const body: Record<string, unknown> = { date: date.toISOString() };
   if (note?.trim()) body.note = note.trim();
@@ -148,7 +184,8 @@ export function setNextAction(id: string, date: Date, note?: string) {
 }
 
 /** Every status move. Backend enforces the rules and returns a readable 422 message if not allowed. */
-export function changeStatus(id: string, input: { status: LeadStatus; reason?: string; dealValue?: number }) {
+/** DEAL_CLOSED also sends the deal (services, due date, notes, advance) — see lib/deal.ts dealPayload. */
+export function changeStatus(id: string, input: { status: LeadStatus; reason?: string } & Partial<ReturnType<typeof dealPayload>>) {
   return api<{ lead: Lead; customerId?: string }>(`/leads/${id}/status`, { method: 'PATCH', body: input });
 }
 

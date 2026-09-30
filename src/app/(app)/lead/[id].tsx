@@ -12,8 +12,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
+  activityMeta,
   eventDetail,
-  eventMeta,
   PRIORITY_TONE,
   statusTone,
   timeAgo,
@@ -31,6 +31,8 @@ import {
   Row,
 } from "@/components/ui/layout";
 import { Sheet } from "@/components/ui/Sheet";
+import { DealCloseForm } from "@/components/leads/DealCloseForm";
+import { dealError, DealForm, dealPayload, newDealForm } from "@/lib/deal";
 import {
   Activity,
   addNote,
@@ -39,16 +41,19 @@ import {
   fetchLead,
   Lead,
   LeadStatus,
+  logVisit,
+  mapUrl,
   REASON_REQUIRED,
   setNextAction,
   STATUS_HINT,
   statusLabel,
   titleCase,
 } from "@/lib/leads";
+import { useAuth } from "@/store/auth";
 import { ColorName, colors } from "@/theme";
 
 /** Which bottom sheet is open. The status sheet has two steps: the list, then reason / deal value when needed. */
-type SheetKind = "note" | "nextAction" | "status" | null;
+type SheetKind = "note" | "visit" | "nextAction" | "status" | null;
 
 const needsDetails = (s: LeadStatus) =>
   REASON_REQUIRED.includes(s) || s === "DEAL_CLOSED";
@@ -140,6 +145,8 @@ function InfoRow({
 export default function LeadDetails() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  // Log visit is for field staff only; office roles just add notes.
+  const isField = useAuth().session?.role === "FieldSales";
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -152,7 +159,7 @@ export default function LeadDetails() {
   // Status sheet step 2: asking for a reason / deal value for `target`.
   const [detailsStep, setDetailsStep] = useState(false);
   const [text, setText] = useState("");
-  const [dealValue, setDealValue] = useState("");
+  const [deal, setDeal] = useState<DealForm>(newDealForm);
   const [date, setDate] = useState(() => defaultNextAction());
   const [saving, setSaving] = useState(false);
   const [sheetError, setSheetError] = useState("");
@@ -189,7 +196,7 @@ export default function LeadDetails() {
 
   const openSheet = (k: SheetKind, preset?: LeadStatus) => {
     setText(k === "nextAction" ? (lead?.nextActionNote ?? "") : "");
-    setDealValue("");
+    setDeal(newDealForm());
     setSheetError("");
     setTarget(preset ?? null);
     setDetailsStep(false);
@@ -221,7 +228,7 @@ export default function LeadDetails() {
     if (needsDetails(s)) {
       setTarget(s);
       setText("");
-      setDealValue("");
+      setDeal(newDealForm());
       setSheetError("");
       setDetailsStep(true);
       return;
@@ -235,16 +242,19 @@ export default function LeadDetails() {
 
   const submitDetails = () => {
     if (!lead || !target) return;
-    const value = Number(dealValue);
+    if (target === "DEAL_CLOSED") {
+      const problem = dealError(deal);
+      if (problem) return setSheetError(problem);
+    }
     run(
       () =>
         changeStatus(lead._id, {
           status: target,
           ...(REASON_REQUIRED.includes(target) ? { reason: text.trim() } : {}),
-          ...(target === "DEAL_CLOSED" ? { dealValue: value } : {}),
+          ...(target === "DEAL_CLOSED" ? dealPayload(deal) : {}),
         }),
       target === "DEAL_CLOSED"
-        ? "Deal closed — customer created"
+        ? "Deal closed — customer and invoice created"
         : `Marked ${statusLabel(target).toLowerCase()}`,
     );
   };
@@ -295,10 +305,9 @@ export default function LeadDetails() {
           ? { tone: "danger" as const, text: `Invalid: ${lead.invalidReason}` }
           : null;
 
-  const valueNum = Number(dealValue);
   const detailsValid =
     target === "DEAL_CLOSED"
-      ? valueNum > 0
+      ? true // checked on submit so the form can say what is missing
       : !!target && REASON_REQUIRED.includes(target)
         ? text.trim().length >= 2
         : false;
@@ -411,6 +420,13 @@ export default function LeadDetails() {
               label="Note"
               onPress={() => openSheet("note")}
             />
+            {isField ? (
+              <QuickAction
+                icon="pin"
+                label="Visit"
+                onPress={() => openSheet("visit")}
+              />
+            ) : null}
           </Row>
         </Card>
 
@@ -433,7 +449,7 @@ export default function LeadDetails() {
           </Row>
         ) : null}
 
-        {/* Next action */}
+        {/* Scheduled follow-up */}
         {nextAction && !closed ? (
           <Row
             style={[
@@ -452,7 +468,7 @@ export default function LeadDetails() {
             />
             <View style={{ flex: 1 }}>
               <AppText variant="label" color={overdue ? "danger" : "warning"}>
-                {overdue ? "Next action overdue" : "Next action"}
+                {overdue ? "Follow-up overdue" : "Follow-up"}
               </AppText>
               <AppText weight="600">{formatDateTime(nextAction)}</AppText>
               {lead.nextActionNote ? (
@@ -503,7 +519,7 @@ export default function LeadDetails() {
           <Row gap={10}>
             {!closed ? (
               <Button
-                label={nextAction ? "Next action" : "Set next action"}
+                label={nextAction ? "Follow-up" : "Schedule follow-up"}
                 icon="clock"
                 variant="outline"
                 flex
@@ -562,8 +578,9 @@ export default function LeadDetails() {
             </AppText>
           ) : (
             activities.map((a, i) => {
-              const m = eventMeta(a.eventType);
+              const m = activityMeta(a);
               const detail = eventDetail(a);
+              const map = mapUrl(a.location);
               const last = i === activities.length - 1;
               return (
                 <Row key={a._id} gap={12} style={{ alignItems: "flex-start" }}>
@@ -586,11 +603,26 @@ export default function LeadDetails() {
                         {detail}
                       </AppText>
                     ) : null}
-                    <AppText variant="caption" color="textSubtle">
-                      {[a.actorId?.fullName, timeAgo(a.createdAt)]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </AppText>
+                    <Row gap={8}>
+                      <AppText variant="caption" color="textSubtle">
+                        {[a.actorId?.fullName, timeAgo(a.createdAt)]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </AppText>
+                      {map ? (
+                        <Pressable
+                          onPress={() => Linking.openURL(map)}
+                          hitSlop={8}
+                        >
+                          <Row gap={3}>
+                            <Icon name="pin" size={12} color="primary" />
+                            <AppText variant="caption" color="primary" weight="600">
+                              View location
+                            </AppText>
+                          </Row>
+                        </Pressable>
+                      ) : null}
+                    </Row>
                   </View>
                 </Row>
               );
@@ -634,24 +666,56 @@ export default function LeadDetails() {
         />
       </Sheet>
 
-      {/* Next action */}
+      {/* Log visit (field sales): a note saved with the phone's GPS */}
+      <Sheet
+        visible={sheet === "visit"}
+        onClose={() => setSheet(null)}
+        title="Log visit"
+      >
+        <Row gap={8}>
+          <Icon name="pin" size={16} color="success" />
+          <AppText variant="label" color="textMuted" weight="400" style={{ flex: 1 }}>
+            Your current location and time are saved with this visit.
+          </AppText>
+        </Row>
+        <Field
+          label="Visit note"
+          placeholder="Who did you meet? What was discussed?"
+          multiline
+          value={text}
+          onChangeText={setText}
+        />
+        {sheetError ? (
+          <AppText variant="label" color="danger">
+            {sheetError}
+          </AppText>
+        ) : null}
+        <Button
+          label={saving ? "Getting location…" : "Save visit"}
+          loading={saving}
+          disabled={!text.trim()}
+          onPress={() => run(() => logVisit(lead._id, text), "Visit logged")}
+        />
+      </Sheet>
+
+      {/* Schedule a follow-up (date + time) */}
       <Sheet
         visible={sheet === "nextAction"}
         onClose={() => setSheet(null)}
-        title="Next action"
+        title="Schedule follow-up"
       >
         <AppText variant="label" color="textMuted" weight="400">
-          When should you act next? A new lead becomes Contacted; it never moves
-          to Follow-up.
+          When should you follow up? A new lead becomes Contacted; its status
+          does not change to Follow-up (that status means a meeting happened).
         </AppText>
         <DateTimeField
-          label="Act on"
+          label="Follow up on"
           value={date}
           onChange={setDate}
           minimumDate={new Date(now)}
         />
         <Field
-          label="What to do (optional)"
+          label="Note (optional)"
           placeholder="e.g. Call back after Diwali"
           multiline
           value={text}
@@ -668,11 +732,11 @@ export default function LeadDetails() {
           </AppText>
         ) : null}
         <Button
-          label={saving ? "Saving…" : "Save next action"}
+          label={saving ? "Saving…" : "Save follow-up"}
           loading={saving}
           disabled={date.getTime() <= now}
           onPress={() =>
-            run(() => setNextAction(lead._id, date, text), "Next action saved")
+            run(() => setNextAction(lead._id, date, text), "Follow-up scheduled")
           }
         />
       </Sheet>
@@ -681,26 +745,24 @@ export default function LeadDetails() {
       <Sheet
         visible={sheet === "status"}
         onClose={() => setSheet(null)}
-        title={detailsStep && target ? statusLabel(target) : "Change status"}
+        title={detailsStep && target === "DEAL_CLOSED" ? "Close deal" : detailsStep && target ? statusLabel(target) : "Change status"}
+        fullHeight={detailsStep && target === "DEAL_CLOSED"}
       >
         {detailsStep ? (
           <>
             {target === "DEAL_CLOSED" ? (
-              <>
-                <Field
-                  label="Deal value (₹)"
-                  required
-                  icon="rupee"
-                  placeholder="e.g. 50000"
-                  keyboardType="number-pad"
-                  value={dealValue}
-                  onChangeText={(t) => setDealValue(t.replace(/\D/g, ""))}
-                />
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{ gap: 12, paddingBottom: 8 }}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <DealCloseForm value={deal} onChange={setDeal} />
                 <AppText variant="caption" color="textSubtle">
-                  Closing the deal creates the customer and counts this amount
-                  towards the owner&apos;s target.
+                  Closing the deal creates the customer, attaches these services
+                  and issues one final invoice.
                 </AppText>
-              </>
+              </ScrollView>
             ) : (
               <Field
                 label="Reason"
@@ -783,7 +845,7 @@ export default function LeadDetails() {
                       {needsDetails(s) ? (
                         <AppText variant="caption" color="textSubtle">
                           {s === "DEAL_CLOSED"
-                            ? "Asks for deal value"
+                            ? "Asks for services and amounts"
                             : "Asks for a reason"}
                         </AppText>
                       ) : null}

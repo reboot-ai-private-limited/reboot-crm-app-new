@@ -16,7 +16,8 @@ export type Proposal = {
   createdAt: string;
 };
 
-export type ServiceOption = { _id: string; name: string; isActive?: boolean };
+/** A Services Master entry; `price` / `defaultTaxType` pre-fill deal lines. */
+export type ServiceOption = { _id: string; name: string; isActive?: boolean; price?: number; defaultTaxType?: 'NONE' | 'GST_18' };
 
 export type ProposalSection = { serviceName: string; html: string };
 
@@ -38,8 +39,9 @@ export function fetchProposals(leadId: string) {
   return api<Proposal[]>(`/proposals/entity/${leadId}`);
 }
 
+/** Active services only: inactive ones are hidden from every dropdown. */
 export function fetchServices() {
-  return api<ServiceOption[]>('/services');
+  return api<ServiceOption[]>('/services', { query: { isActive: 'true' } });
 }
 
 type Generated = {

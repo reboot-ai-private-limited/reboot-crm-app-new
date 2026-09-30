@@ -1,11 +1,11 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { Icon } from '@/components/ui/Icon';
-import { Avatar, Card, Header, Row } from '@/components/ui/layout';
+import { Avatar, Card, FilterChips, Header, Row } from '@/components/ui/layout';
 import { statusTone } from '@/components/leads/meta';
 import { fetchFollowUps, Lead, statusLabel, titleCase } from '@/lib/leads';
 import { useAuth } from '@/store/auth';
@@ -85,9 +85,17 @@ function FollowUpRow({ lead, tone, onPress }: { lead: Lead; tone: ColorName; onP
   );
 }
 
+const FILTERS = ['All', 'Overdue', 'Today', 'Upcoming'] as const;
+type Filter = (typeof FILTERS)[number];
+const FILTER_KEY: Record<Exclude<Filter, 'All'>, Group['key']> = { Overdue: 'overdue', Today: 'today', Upcoming: 'upcoming' };
+/** Route param `?filter=overdue|today|upcoming` → chip. */
+const fromParam = (p?: string): Filter => FILTERS.find((f) => f.toLowerCase() === p?.toLowerCase()) ?? 'All';
+
 export default function FollowUps() {
   const { isAdmin } = useAuth();
   const router = useRouter();
+  const params = useLocalSearchParams<{ filter?: string }>();
+  const [filter, setFilter] = useState<Filter>(() => fromParam(params.filter));
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -109,20 +117,27 @@ export default function FollowUps() {
     [isAdmin],
   );
 
-  // Refresh every time the screen is focused, so a next action set on Lead Details shows up on return.
+  // Refresh every time the screen is focused, so a follow-up scheduled on Lead Details shows up on return.
   useFocusEffect(
     useCallback(() => {
       load();
     }, [load]),
   );
 
-  const groups = groupFollowUps(leads);
+  const allGroups = groupFollowUps(leads);
+  const groups = filter === 'All' ? allGroups : allGroups.filter((g) => g.key === FILTER_KEY[filter]);
   const count = groups.reduce((n, g) => n + g.leads.length, 0);
   const subtitle = !loaded ? 'Loading…' : `${count} ${count === 1 ? 'follow-up' : 'follow-ups'}`;
+  const chipLabel = (f: Filter) => (f === 'All' ? 'All' : `${f} · ${allGroups.find((g) => g.key === FILTER_KEY[f])?.leads.length ?? 0}`);
+  const emptyText =
+    filter === 'All' ? 'No follow-ups scheduled. Schedule a follow-up on a lead to see it here.' : filter === 'Overdue' ? 'Nothing overdue.' : filter === 'Today' ? 'Nothing due today.' : 'No upcoming follow-ups.';
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <Header title="Follow-ups" subtitle={subtitle} back />
+      <View style={styles.controls}>
+        <FilterChips items={FILTERS.map(chipLabel)} value={chipLabel(filter)} onChange={(l) => setFilter(FILTERS.find((f) => chipLabel(f) === l) ?? 'All')} />
+      </View>
       {!loaded ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
       ) : (
@@ -134,7 +149,7 @@ export default function FollowUps() {
             <View style={styles.empty}>
               <Icon name={error ? 'alert' : 'clock'} size={32} color={error ? 'danger' : 'textSubtle'} />
               <AppText color={error ? 'danger' : 'textMuted'} align="center">
-                {error || 'No follow-ups scheduled. Set a next action on a lead to see it here.'}
+                {error || emptyText}
               </AppText>
               {error ? (
                 <AppText color="primary" weight="600" onPress={() => load()}>
@@ -164,6 +179,7 @@ export default function FollowUps() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  controls: { paddingHorizontal: 20, paddingBottom: 12 },
   list: { paddingHorizontal: 20, paddingBottom: 40, gap: 20, flexGrow: 1 },
   call: { padding: 9, borderRadius: 10, backgroundColor: colors.successSoft },
   chip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },

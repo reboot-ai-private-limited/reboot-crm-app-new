@@ -192,14 +192,20 @@ export default function CustomerDetailsScreen() {
             return (
               <Card key={inv._id} style={{ gap: 6 }}>
                 <Row>
-                  <AppText variant="section" style={{ flex: 1 }} numberOfLines={1}>
-                    {inv.invoiceNumber}
-                  </AppText>
+                  <View style={{ flex: 1 }}>
+                    <AppText variant="section" numberOfLines={1}>
+                      {inv.invoiceNumber}
+                    </AppText>
+                    {/* The customer sees a Proforma (number hidden) until it is fully paid. */}
+                    <AppText variant="caption" color={inv.status === 'PAID' ? 'success' : 'textSubtle'}>
+                      {inv.status === 'PAID' ? 'Final (billing) invoice' : 'Proforma invoice'}
+                    </AppText>
+                  </View>
                   <Pill label={inv.status} tone={INVOICE_TONE[inv.status] ?? ['slate', 'slateSoft']} />
                 </Row>
-                {inv.customerServiceId?.serviceNameSnapshot ? (
-                  <AppText variant="label" color="textMuted" weight="400" numberOfLines={1}>
-                    {inv.customerServiceId.serviceNameSnapshot}
+                {inv.lines?.length || inv.customerServiceId?.serviceNameSnapshot ? (
+                  <AppText variant="label" color="textMuted" weight="400" numberOfLines={2}>
+                    {inv.lines?.length ? inv.lines.map((l) => l.serviceName).join(', ') : inv.customerServiceId?.serviceNameSnapshot}
                   </AppText>
                 ) : null}
                 <Row>
