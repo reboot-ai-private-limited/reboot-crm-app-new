@@ -27,6 +27,7 @@ export function DateTimeField({
   minimumDate,
   maximumDate,
   dateOnly,
+  compact,
 }: {
   label: string;
   value: Date;
@@ -34,6 +35,8 @@ export function DateTimeField({
   minimumDate?: Date;
   maximumDate?: Date;
   dateOnly?: boolean;
+  /** Small one-line button with the label inside it (for filter bars). */
+  compact?: boolean;
 }) {
   const [iosOpen, setIosOpen] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -66,14 +69,29 @@ export function DateTimeField({
 
   return (
     <View style={{ gap: 6 }}>
-      <AppText variant="label" color="textMuted">
-        {label}
-      </AppText>
-      <Pressable onPress={open} style={styles.box}>
-        <Icon name="calendar" size={18} color="textSubtle" />
-        <AppText style={{ flex: 1 }}>{dateOnly ? formatDate(value) : formatDateTime(value)}</AppText>
-        <Icon name="chevD" size={18} color="textSubtle" />
-      </Pressable>
+      {compact ? null : (
+        <AppText variant="label" color="textMuted">
+          {label}
+        </AppText>
+      )}
+      {compact ? (
+        // One short line: "From  1 Oct 26"
+        <Pressable onPress={open} style={styles.compact}>
+          <AppText variant="caption" color="textMuted">
+            {label}
+          </AppText>
+          <AppText variant="label" weight="600" numberOfLines={1} style={{ flex: 1 }}>
+            {value.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: '2-digit' })}
+          </AppText>
+          <Icon name="calendar" size={14} color="textSubtle" />
+        </Pressable>
+      ) : (
+        <Pressable onPress={open} style={styles.box}>
+          <Icon name="calendar" size={18} color="textSubtle" />
+          <AppText style={{ flex: 1 }}>{dateOnly ? formatDate(value) : formatDateTime(value)}</AppText>
+          <Icon name="chevD" size={18} color="textSubtle" />
+        </Pressable>
+      )}
 
       {Platform.OS === 'ios' ? (
         <Sheet visible={iosOpen} title={label} onClose={() => setIosOpen(false)}>
@@ -93,4 +111,5 @@ export function DateTimeField({
 
 const styles = StyleSheet.create({
   box: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md },
+  compact: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md },
 });

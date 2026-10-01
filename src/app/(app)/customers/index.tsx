@@ -1,12 +1,13 @@
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Linking, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { Icon } from '@/components/ui/Icon';
 import { Avatar, Card, Field, Header, Row } from '@/components/ui/layout';
-import { CustomerRow, fetchCustomers, rupees } from '@/lib/customers';
+import { MultiSelectFilter } from '@/components/ui/MultiSelectFilter';
+import { CustomerRow, fetchAllCustomers, rmName, rupees } from '@/lib/customers';
 import { titleCase } from '@/lib/leads';
 import { useAuth } from '@/store/auth';
 import { colors } from '@/theme';
@@ -64,10 +65,11 @@ export default function CustomersScreen() {
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
 
-  const [customers, setCustomers] = useState<CustomerRow[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [loadingMore, setLoadingMore] = useState(false);
+  // Admin: filter by the employee(s) the customers belong to.
+  const [employeeSel, setEmployeeSel] = useState<string[]>([]);
+
+  // Every customer matching the search; the employee filter is applied on top.
+  const [allCustomers, setAllCustomers] = useState<CustomerRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const requestId = useRef(0);
@@ -82,24 +84,19 @@ export default function CustomersScreen() {
   }, [search]);
 
   const load = useCallback(
-    async (p: number, mode: 'initial' | 'more' | 'refresh') => {
+    async (mode: 'initial' | 'refresh') => {
       const id = ++requestId.current;
-      if (mode === 'more') setLoadingMore(true);
       if (mode === 'refresh') setRefreshing(true);
-      if (mode !== 'initial') setError('');
+      setError('');
       try {
-        const res = await fetchCustomers({ page: p, search: query });
+        const res = await fetchAllCustomers({ search: query });
         if (id !== requestId.current) return; // a newer search superseded this one
-        setCustomers((prev) => (p === 1 ? res.data : [...prev, ...res.data]));
-        setTotal(res.total);
-        setPage(p);
-        setError('');
+        setAllCustomers(res);
       } catch (e) {
         if (id === requestId.current) setError((e as Error).message);
       } finally {
         if (id === requestId.current) {
           setLoadedKey(query);
-          setLoadingMore(false);
           setRefreshing(false);
         }
       }
@@ -107,15 +104,13 @@ export default function CustomersScreen() {
     [query],
   );
 
-  // (Re)load page 1 whenever the search changes. State is only set after the await.
+  // (Re)load whenever the search changes. State is only set after the await.
   useEffect(() => {
     const id = ++requestId.current;
-    fetchCustomers({ page: 1, search: query })
+    fetchAllCustomers({ search: query })
       .then((res) => {
         if (id !== requestId.current) return;
-        setCustomers(res.data);
-        setTotal(res.total);
-        setPage(1);
+        setAllCustomers(res);
         setError('');
       })
       .catch((e: Error) => {
@@ -126,7 +121,22 @@ export default function CustomersScreen() {
       });
   }, [query]);
 
-  const hasMore = customers.length < total;
+  // Employee options come from the customers that are actually there.
+  const employeeOptions = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const c of allCustomers) if (c.assignedRM) names.set(c.assignedRM._id, rmName(c.assignedRM));
+    const counts = new Map<string, number>();
+    for (const c of allCustomers) if (c.assignedRM) counts.set(c.assignedRM._id, (counts.get(c.assignedRM._id) ?? 0) + 1);
+    return [...names.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([value, label]) => ({ value, label, count: counts.get(value) }));
+  }, [allCustomers]);
+
+  const customers = useMemo(
+    () => (employeeSel.length === 0 ? allCustomers : allCustomers.filter((c) => !!c.assignedRM && employeeSel.includes(c.assignedRM._id))),
+    [allCustomers, employeeSel],
+  );
+  const total = customers.length;
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -137,6 +147,11 @@ export default function CustomersScreen() {
       />
       <View style={styles.controls}>
         <Field icon="search" placeholder="Search name, business or phone" value={search} onChangeText={setSearch} />
+        {isAdmin ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+            <MultiSelectFilter label="Employee" options={employeeOptions} selected={employeeSel} onChange={setEmployeeSel} />
+          </ScrollView>
+        ) : null}
       </View>
 
       {loading ? (
@@ -149,32 +164,19 @@ export default function CustomersScreen() {
             <CustomerCard customer={item} onPress={() => router.push({ pathname: '/customers/[id]', params: { id: item._id } })} />
           )}
           contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(1, 'refresh')} tintColor={colors.primary} />}
-          onEndReachedThreshold={0.4}
-          onEndReached={() => {
-            if (hasMore && !loadingMore && !error) load(page + 1, 'more');
-          }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load('refresh')} tintColor={colors.primary} />}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Icon name={error ? 'alert' : 'briefcase'} size={32} color={error ? 'danger' : 'textSubtle'} />
               <AppText color={error ? 'danger' : 'textMuted'} align="center">
-                {error || (query ? 'No customers match your search.' : 'No customers yet. Close a deal on a lead to create one.')}
+                {error || (query || employeeSel.length > 0 ? 'No customers match your search.' : 'No customers yet. Close a deal on a lead to create one.')}
               </AppText>
               {error ? (
-                <AppText color="primary" weight="600" onPress={() => load(1, 'initial')}>
+                <AppText color="primary" weight="600" onPress={() => load('initial')}>
                   Try again
                 </AppText>
               ) : null}
             </View>
-          }
-          ListFooterComponent={
-            loadingMore ? (
-              <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} />
-            ) : error && customers.length > 0 ? (
-              <AppText color="danger" align="center" onPress={() => load(page + 1, 'more')} style={{ marginVertical: 16 }}>
-                {error} Tap to retry.
-              </AppText>
-            ) : null
           }
         />
       )}

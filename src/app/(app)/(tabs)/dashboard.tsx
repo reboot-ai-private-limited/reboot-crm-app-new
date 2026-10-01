@@ -5,18 +5,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { Icon, IconName } from '@/components/ui/Icon';
-import { Avatar, Card, FilterChips, GradientCard, IconBadge, Row, SectionHeader, Track } from '@/components/ui/layout';
-import { STATUS_TONE } from '@/components/leads/meta';
+import { Card, FilterChips, GradientCard, IconBadge, Row, SectionHeader } from '@/components/ui/layout';
 import { rupees } from '@/lib/customers';
-import { countAllLeads, countPoolLeads, fetchFollowUps, Lead, LeadStatus, statusLabel } from '@/lib/leads';
-import { DashboardRow, fetchDashboardRows, fetchMonthRows, Range, RANGES, rangeDates, ROLE_LABEL } from '@/lib/reporting';
+import { countAllLeads, fetchFollowUps, Lead } from '@/lib/leads';
+import { DashboardRow, fetchDashboardRows, fetchMonthRows, Range, RANGES, rangeDates } from '@/lib/reporting';
 import { useAuth } from '@/store/auth';
 import { colors } from '@/theme';
 
 type Tone = 'primary' | 'purple' | 'success' | 'warning' | 'danger';
-
-// Open pipeline, in lifecycle order (backend/docs/05-LEAD-LIFECYCLE.md).
-const FUNNEL: LeadStatus[] = ['FRESH', 'CONTACTED', 'MEETING', 'FOLLOW_UP', 'PROPOSAL', 'DEAL_CLOSED'];
 
 const startOfToday = () => new Date().setHours(0, 0, 0, 0);
 const at = (l: Lead) => new Date(l.nextActionDate as string).getTime();
@@ -33,18 +29,44 @@ function daysLeftInMonth() {
 
 const assigneeName = (l: Lead) => (typeof l.assignedTo === 'object' && l.assignedTo?.fullName) || 'Unassigned';
 const sum = (rows: DashboardRow[], k: keyof DashboardRow) => rows.reduce((n, r) => n + (Number(r[k]) || 0), 0);
-const activeToday = (r: DashboardRow) => !!r.firstActivity && r.firstActivity !== 'N/A';
+
+/** Short clock time ("9:05 AM"), or a dash when there was no activity. */
+const clock = (iso: string | null) => {
+  if (!iso || iso === 'N/A') return '–';
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? '–' : d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+};
+
+// Team performance table: short header label and width of each column after the name.
+const COLS = [
+  { key: 'att', label: 'Att', w: 58 },
+  { key: 'leads', label: 'Leads', w: 58 },
+  { key: 'props', label: 'Prop', w: 56 },
+  { key: 'meets', label: 'Meet', w: 56 },
+  { key: 'fups', label: 'F-Up', w: 56 },
+  { key: 'deals', label: 'Deals', w: 58 },
+  { key: 'first', label: 'First', w: 84 },
+  { key: 'last', label: 'Last', w: 84 },
+] as const;
+const NAME_W = 140;
+const cells = (r: DashboardRow): Record<(typeof COLS)[number]['key'], string> => ({
+  att: r.attendanceText || '0',
+  leads: String(r.totalLeads),
+  props: String(r.proposals),
+  meets: String(r.meetings),
+  fups: String(r.followUps),
+  deals: String(r.dealsClosed),
+  first: clock(r.firstActivity),
+  last: clock(r.lastActivity),
+});
 
 type Data = {
-  total: number;
-  pool: number;
-  funnel: Record<string, number>;
+  inMeeting: number;
   followUps: Lead[];
   /** Activity for the selected period. */
   period: DashboardRow[];
   /** Carries the monthly targets shown in the target card. */
   month: DashboardRow[];
-  today: DashboardRow[];
 };
 
 
@@ -67,21 +89,6 @@ function Stat({ label, value, icon, tone, onPress }: { label: string; value: num
   );
 }
 
-/** One of four tiles in the Today card: small icon, count, label. */
-function Metric({ label, value, icon, tone }: { label: string; value: number; icon: IconName; tone: Tone }) {
-  return (
-    <View style={styles.metric}>
-      <Row gap={6}>
-        <Icon name={icon} size={14} color={tone} />
-        <AppText variant="caption" color="textMuted" numberOfLines={1} style={{ flex: 1 }}>
-          {label}
-        </AppText>
-      </Row>
-      <AppText variant="section">{value}</AppText>
-    </View>
-  );
-}
-
 export default function Dashboard() {
   const { session } = useAuth();
   const router = useRouter();
@@ -89,39 +96,33 @@ export default function Dashboard() {
   const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
-  const [range, setRange] = useState<Range>('This month');
+  const [range, setRange] = useState<Range>('Today');
   const [periodLoading, setPeriodLoading] = useState(false);
   const rangeRef = useRef(range);
 
   const load = useCallback(async (r: Range, refresh = false) => {
     if (refresh) setRefreshing(true);
-    const now = new Date();
     const { start, end, targetMonth } = rangeDates(r);
     // "This month" and "Last month" periods already carry their month's targets; rolling ranges use this month.
-    const needMonth = r === 'Last 7 days' || r === 'Last 30 days';
+    const needMonth = r === 'Today' || r === 'Last 7 days' || r === 'Last 30 days';
     // Each block loads on its own, so one failing API doesn't blank the whole screen.
-    const [counts, followUps, period, month, today] = await Promise.allSettled([
-      Promise.all([countAllLeads(), countPoolLeads(), ...FUNNEL.map((s) => countAllLeads(s))]),
+    const [meeting, followUps, period, month] = await Promise.allSettled([
+      countAllLeads('MEETING'),
       fetchFollowUps(true),
       fetchDashboardRows(start, end),
       needMonth ? fetchMonthRows() : Promise.resolve(null),
-      fetchDashboardRows(now, now),
     ]);
     if (rangeRef.current !== r) return; // the user picked another period meanwhile
     const next: Partial<Data> = {};
-    if (counts.status === 'fulfilled') {
-      const [total, pool, ...byStatus] = counts.value;
-      Object.assign(next, { total, pool, funnel: Object.fromEntries(FUNNEL.map((s, i) => [s, byStatus[i]])) });
-    }
+    if (meeting.status === 'fulfilled') next.inMeeting = meeting.value;
     if (followUps.status === 'fulfilled') next.followUps = followUps.value;
     if (period.status === 'fulfilled') {
       next.period = period.value;
       if (targetMonth === 'last' || !needMonth) next.month = period.value;
     }
     if (month.status === 'fulfilled' && month.value) next.month = month.value;
-    if (today.status === 'fulfilled') next.today = today.value;
     setData((prev) => ({ ...prev, ...next }));
-    const failed = [counts, followUps, period, month, today].find((x) => x.status === 'rejected') as PromiseRejectedResult | undefined;
+    const failed = [meeting, followUps, period, month].find((x) => x.status === 'rejected') as PromiseRejectedResult | undefined;
     setError(failed ? (failed.reason as Error).message : '');
     setLoaded(true);
     setRefreshing(false);
@@ -150,9 +151,11 @@ export default function Dashboard() {
 
   // Team = active non-admin employees.
   const team = (data.month ?? []).filter((r) => r.role !== 'Admin' && r.status === 'Active');
-  const todayRows = (data.today ?? []).filter((r) => r.role !== 'Admin');
   const periodRows = (data.period ?? []).filter((r) => r.role !== 'Admin');
-  const periodById = new Map(periodRows.map((r) => [r.employeeId, r]));
+  // Active people for the table (Admins included), most deals first.
+  const tableRows = (data.period ?? [])
+    .filter((r) => r.status === 'Active')
+    .sort((a, b) => b.dealsClosed - a.dealsClosed || b.totalLeads - a.totalLeads || a.employeeName.localeCompare(b.employeeName));
   const lastMonth = range === 'Last month';
   const targetMonthName = (lastMonth ? new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1) : new Date()).toLocaleDateString(undefined, { month: 'long' });
   const target = sum(team, 'targetRevenue');
@@ -160,12 +163,6 @@ export default function Dashboard() {
   const collected = sum(team, 'collectionAmount');
   const pct = target > 0 ? achieved / target : 0;
   const daysLeft = daysLeftInMonth();
-  const funnelMax = Math.max(1, ...FUNNEL.map((s) => data.funnel?.[s] ?? 0));
-  const workingToday = todayRows.filter((r) => r.status === 'Active' && activeToday(r)).length;
-  const teamSize = todayRows.filter((r) => r.status === 'Active').length;
-  const ranked = [...team].sort((a, b) => (b.targetRevenue ? b.achievedAmount / b.targetRevenue : 0) - (a.targetRevenue ? a.achievedAmount / a.targetRevenue : 0));
-  const todayById = new Map(todayRows.map((r) => [r.employeeId, r]));
-
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView
@@ -174,7 +171,6 @@ export default function Dashboard() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(range, true)} tintColor={colors.primary} />}>
         {/* Greeting */}
         <Row>
-          <Avatar name={name || '?'} size={44} />
           <View style={{ flex: 1 }}>
             <AppText variant="label" color="textMuted" weight="400">
               {greeting()},
@@ -244,12 +240,55 @@ export default function Dashboard() {
                 <Stat label="Proposals" value={data.period ? sum(periodRows, 'proposals') : '–'} icon="file" tone="purple" onPress={() => router.push('/leads')} />
               </View>
               <View style={styles.grid}>
-                <Stat label="In meeting" value={data.funnel?.MEETING ?? '–'} icon="calendar" tone="warning" onPress={() => router.push('/leads')} />
+                <Stat label="In meeting" value={data.inMeeting ?? '–'} icon="calendar" tone="warning" onPress={() => router.push('/leads')} />
                 <Stat label="Deals closed" value={data.period ? sum(periodRows, 'dealsClosed') : '–'} icon="check" tone="success" onPress={() => router.push('/leads')} />
               </View>
             </View>
 
-            {/* Follow-ups across the team */}
+            {/* Team performance for the selected period: scrolls up/down inside the card (and sideways on a narrow phone) */}
+            <SectionHeader title={`Team performance · ${tableRows.length}`} />
+            {tableRows.length === 0 ? (
+              <Card>
+                <AppText color="textMuted">No active employees.</AppText>
+              </Card>
+            ) : (
+              <Card style={styles.tableCard}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled bounces={false}>
+                  <View>
+                    <View style={[styles.tr, styles.thead]}>
+                      <AppText variant="caption" weight="700" color="textMuted" style={{ width: NAME_W }}>
+                        Employee
+                      </AppText>
+                      {COLS.map((c) => (
+                        <AppText key={c.key} variant="caption" weight="700" color="textMuted" align="center" style={{ width: c.w }}>
+                          {c.label}
+                        </AppText>
+                      ))}
+                    </View>
+                    <ScrollView style={styles.tbody} nestedScrollEnabled showsVerticalScrollIndicator={false} overScrollMode="never">
+                      {tableRows.map((r, i) => {
+                        const c = cells(r);
+                        return (
+                          <View key={r.employeeId} style={[styles.tr, i > 0 && styles.divider]}>
+                            <Row gap={8} style={{ width: NAME_W }}>
+                              <AppText weight="600" numberOfLines={1} style={{ flex: 1 }}>
+                                {r.employeeName}{r.role === 'Admin' ? ' (Admin)' : ''}
+                              </AppText>
+                            </Row>
+                            {COLS.map((col) => (
+                              <AppText key={col.key} variant="body" weight={col.key === 'deals' ? '700' : '400'} align="center" style={{ width: col.w }}>
+                                {c[col.key]}
+                              </AppText>
+                            ))}
+                          </View>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                </ScrollView>
+              </Card>
+            )}
+
             {/* Overdue follow-ups across the team (admin only needs the exceptions) */}
             <SectionHeader
               title={`Overdue follow-ups · ${overdue.length}`}
@@ -285,104 +324,6 @@ export default function Dashboard() {
               </Card>
             ))}
 
-            {/* Pipeline by status (assigned leads) */}
-            <SectionHeader title="Pipeline" link={data.pool !== undefined ? `${data.pool} in pool` : undefined} onPress={() => router.push('/leads')} />
-            <Card style={{ gap: 12 }}>
-              {FUNNEL.map((s) => {
-                const n = data.funnel?.[s] ?? 0;
-                return (
-                  <View key={s} style={{ gap: 6 }}>
-                    <Row style={{ justifyContent: 'space-between' }}>
-                      <AppText variant="label" color="textMuted">
-                        {statusLabel(s)}
-                      </AppText>
-                      <AppText variant="label" weight="600">
-                        {n}
-                      </AppText>
-                    </Row>
-                    <Track pct={n / funnelMax} tone={STATUS_TONE[s][0]} />
-                  </View>
-                );
-              })}
-            </Card>
-
-            {/* Today's activity */}
-            <SectionHeader title="Today" />
-            <Card style={{ gap: 14 }}>
-              {/* Who has logged activity today, out of the active team */}
-              <View style={{ gap: 8 }}>
-                <Row style={{ justifyContent: 'space-between' }}>
-                  <Row gap={8}>
-                    <Icon name="users" size={16} color="primary" />
-                    <AppText weight="600">Working today</AppText>
-                  </Row>
-                  <AppText weight="600">
-                    {workingToday}
-                    <AppText color="textMuted" weight="400">
-                      {' '}
-                      / {teamSize}
-                    </AppText>
-                  </AppText>
-                </Row>
-                <Track pct={teamSize ? workingToday / teamSize : 0} tone="success" />
-              </View>
-              <View style={styles.metrics}>
-                <Metric label="Leads taken" value={sum(todayRows, 'totalLeads')} icon="users" tone="primary" />
-                <Metric label="Follow-ups set" value={sum(todayRows, 'followUps')} icon="clock" tone="warning" />
-                <Metric label="Proposals sent" value={sum(todayRows, 'proposals')} icon="file" tone="purple" />
-                <Metric label="Deals closed" value={sum(todayRows, 'dealsClosed')} icon="check" tone="success" />
-              </View>
-            </Card>
-
-            {/* Team, best target progress first */}
-            <SectionHeader title={`Team · ${team.length}`} />
-            {team.length === 0 ? (
-              <Card>
-                <AppText color="textMuted">No active employees.</AppText>
-              </Card>
-            ) : (
-              <Card style={{ gap: 0, paddingVertical: 4 }}>
-                {ranked.map((r, i) => {
-                  const p = r.targetRevenue > 0 ? r.achievedAmount / r.targetRevenue : 0;
-                  const t = todayById.get(r.employeeId);
-                  const on = t ? activeToday(t) : false;
-                  const pr = periodById.get(r.employeeId);
-                  const deals = pr?.dealsClosed ?? 0;
-                  return (
-                    <View key={r.employeeId} style={[styles.member, i > 0 && styles.divider]}>
-                      <Row>
-                        <View>
-                          <Avatar name={r.employeeName} size={36} />
-                          <View style={[styles.dot, { backgroundColor: on ? colors.success : colors.textSubtle }]} />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <AppText weight="600" numberOfLines={1}>
-                            {r.employeeName}
-                          </AppText>
-                          <AppText variant="caption" color="textMuted" numberOfLines={1}>
-                            {ROLE_LABEL[r.role] ?? r.role} · {deals} {deals === 1 ? 'deal' : 'deals'} · {pr?.proposals ?? 0} sent
-                          </AppText>
-                        </View>
-                        <AppText variant="label" weight="600" color={r.targetRevenue > 0 ? 'text' : 'textSubtle'}>
-                          {r.targetRevenue > 0 ? `${Math.round(p * 100)}%` : 'No target'}
-                        </AppText>
-                      </Row>
-                      {r.targetRevenue > 0 ? (
-                        <View style={{ gap: 4, marginTop: 8 }}>
-                          <Track pct={p} tone={p >= 1 ? 'success' : 'primary'} />
-                          <AppText variant="caption" color="textMuted">
-                            {rupees(r.achievedAmount)} of {rupees(r.targetRevenue)}
-                          </AppText>
-                        </View>
-                      ) : null}
-                    </View>
-                  );
-                })}
-              </Card>
-            )}
-            <AppText variant="caption" color="textSubtle" align="center">
-              Green dot = active today. Deals and proposals: {range.toLowerCase()}. Targets: {targetMonthName}.
-            </AppText>
           </>
         )}
       </ScrollView>
@@ -399,10 +340,10 @@ const styles = StyleSheet.create({
   trackFill: { height: '100%', borderRadius: 4, backgroundColor: colors.surface },
   grid: { flexDirection: 'row', gap: 10 },
   stat: { flex: 1, gap: 2, padding: 12 },
-  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  metric: { flexBasis: '47%', flexGrow: 1, gap: 4, padding: 10, borderRadius: 12, backgroundColor: colors.bg },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  member: { paddingVertical: 12 },
+  tableCard: { padding: 0, overflow: 'hidden' },
+  tr: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 14 },
+  thead: { backgroundColor: colors.bg, paddingVertical: 10 },
+  tbody: { maxHeight: 420 },
   divider: { borderTopWidth: 1, borderTopColor: colors.border },
-  dot: { position: 'absolute', right: 0, bottom: 0, width: 10, height: 10, borderRadius: 5, borderWidth: 2, borderColor: colors.surface },
 });

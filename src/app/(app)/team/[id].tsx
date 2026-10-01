@@ -1,9 +1,10 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
+import { Button } from '@/components/ui/Button';
 import { Icon, IconName } from '@/components/ui/Icon';
 import { Avatar, Card, Header, IconButton, Row, SectionHeader, Track } from '@/components/ui/layout';
 import { activityMeta, eventDetail } from '@/components/leads/meta';
@@ -142,6 +143,26 @@ export default function TeamMember() {
     loadDay();
   };
 
+  // Coming back from "Set target": reload so the new target shows.
+  const firstFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      setMonthKey((k) => k + 1);
+    }, []),
+  );
+
+  // Tapping a day in Attendance scrolls down to that day's activity.
+  const scrollRef = useRef<ScrollView>(null);
+  const activityY = useRef(0);
+  const showDay = (d: Date) => {
+    pickDay(d);
+    scrollRef.current?.scrollTo({ y: Math.max(0, activityY.current - 8), animated: true });
+  };
+
   const name = row?.employeeName ?? p.name ?? 'Employee';
   const role = row?.role ?? p.role ?? '';
   const mobile = row?.mobile ?? p.mobile;
@@ -181,6 +202,7 @@ export default function TeamMember() {
     <SafeAreaView style={styles.screen} edges={['top']}>
       <Header title={name} subtitle={[ROLE_LABEL[role] ?? role, inactive ? 'Inactive' : null].filter(Boolean).join(' · ')} back />
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />}>
@@ -250,9 +272,12 @@ export default function TeamMember() {
                   </AppText>
                 </>
               ) : (
-                <AppText variant="caption" color="textMuted">
-                  No target set for this month. Set it on the web in Team → Add Target.
-                </AppText>
+                <Row style={{ justifyContent: 'space-between' }}>
+                  <AppText variant="caption" color="textMuted" style={{ flex: 1 }}>
+                    No target set for this month.
+                  </AppText>
+                  <Button label="Set target" icon="target" variant="soft" small onPress={() => router.push('/team/target')} />
+                </Row>
               )}
             </Card>
 
@@ -291,7 +316,7 @@ export default function TeamMember() {
                   const h = attendanceHours(d);
                   const selected = ymd(date) === ymd(day);
                   return (
-                    <Pressable key={d._id} onPress={() => pickDay(date)} style={[styles.attRow, styles.divider, selected && { backgroundColor: colors.primarySoft }]}>
+                    <Pressable key={d._id} onPress={() => showDay(date)} style={[styles.attRow, styles.divider, selected && { backgroundColor: colors.primarySoft }]}>
                       <Row>
                         <View style={[styles.dayDot, { backgroundColor: h > 4 ? colors.success : colors.warning }]} />
                         <AppText weight="500" style={{ width: 92 }}>
@@ -316,9 +341,10 @@ export default function TeamMember() {
         )}
 
         {/* Day activity */}
+        <View style={{ gap: 16 }} onLayout={(e) => (activityY.current = e.nativeEvent.layout.y)}>
         <SectionHeader title="Activity" />
         <Pager label={dayLabel} onPrev={() => shiftDay(-1)} onNext={() => shiftDay(1)} nextDisabled={sameDay(day, now)} />
-        {dayLoading ? (
+        {dayLoading && activities.length === 0 ? (
           <ActivityIndicator color={colors.primary} />
         ) : dayError ? (
           <Card borderColor="danger">
@@ -337,7 +363,8 @@ export default function TeamMember() {
             <AppText color="textMuted">No activity on this day.</AppText>
           </Card>
         ) : (
-          <Card style={{ gap: 0, paddingVertical: 4 }}>
+          // Keep the previous day's list on screen (dimmed) while the next one loads, so the page doesn't jump.
+          <Card style={{ gap: 0, paddingVertical: 4, opacity: dayLoading ? 0.5 : 1 }}>
             {activities.map((a, i) => {
               const meta = activityMeta(a);
               const detail = eventDetail(a as unknown as Activity);
@@ -381,6 +408,7 @@ export default function TeamMember() {
             })}
           </Card>
         )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

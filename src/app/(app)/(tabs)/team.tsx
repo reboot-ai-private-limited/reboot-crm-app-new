@@ -5,8 +5,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { Icon } from '@/components/ui/Icon';
-import { Avatar, Card, Header, Row, Segmented } from '@/components/ui/layout';
-import { DashboardRow, fetchMonthRows, ROLE_LABEL } from '@/lib/reporting';
+import { Button } from '@/components/ui/Button';
+import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
+import { Avatar, Card, Header, Row } from '@/components/ui/layout';
+import { SingleSelectFilter } from '@/components/ui/SingleSelectFilter';
+import { DashboardRow, fetchDashboardRows, ROLE_LABEL } from '@/lib/reporting';
 import { ColorName, colors } from '@/theme';
 
 const TABS = ['All', 'Advisors', 'Field'] as const;
@@ -21,6 +24,15 @@ function progressTone(pct: number): ColorName {
 }
 
 const pctOf = (r: DashboardRow) => (r.targetRevenue > 0 ? r.achievedAmount / r.targetRevenue : 0);
+
+const kpis = (r: DashboardRow): { label: string; value: string; tone?: ColorName }[] => [
+  { label: 'Att', value: r.attendanceText || '0' },
+  { label: 'Leads', value: String(r.totalLeads) },
+  { label: 'Prop', value: String(r.proposals) },
+  { label: 'Meet', value: String(r.meetings) },
+  { label: 'F-Up', value: String(r.followUps) },
+  { label: 'Deals', value: String(r.dealsClosed), tone: 'success' },
+];
 
 function MemberCard({ row, onPress }: { row: DashboardRow; onPress: () => void }) {
   const active = row.status === 'Active';
@@ -60,19 +72,33 @@ function MemberCard({ row, onPress }: { row: DashboardRow; onPress: () => void }
         </View>
       </View>
 
-      <AppText variant="label" color="textMuted" weight="400">
-        {row.totalLeads} {row.totalLeads === 1 ? 'lead' : 'leads'}
-        {'   '}
-        {row.dealsClosed} {row.dealsClosed === 1 ? 'deal' : 'deals'}
-      </AppText>
+      {/* Small KPIs for the chosen dates: value on top, short label below, six equal cells. */}
+      <View style={styles.kpis}>
+        {kpis(row).map((k) => (
+          <View key={k.label} style={styles.kpi}>
+            <AppText variant="label" weight="700" color={k.tone ?? 'text'} numberOfLines={1} adjustsFontSizeToFit>
+              {k.value}
+            </AppText>
+            <AppText variant="caption" color="textMuted" numberOfLines={1}>
+              {k.label}
+            </AppText>
+          </View>
+        ))}
+      </View>
     </Card>
   );
 }
 
-// Admin: every employee with this month's target progress. Tap for their details.
+const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+// Admin: every employee with their activity for the chosen dates and their monthly target progress.
+// Add employee / Add target open their own screens. Tap a card for the employee's details.
 export default function Team() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('All');
+  // Same as the web Team page: one day (today) until the admin picks other dates.
+  const [from, setFrom] = useState(() => startOfDay(new Date()));
+  const [to, setTo] = useState(() => startOfDay(new Date()));
   const [rows, setRows] = useState<DashboardRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -81,7 +107,7 @@ export default function Team() {
   const load = useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true);
     try {
-      setRows(await fetchMonthRows());
+      setRows(await fetchDashboardRows(from, to));
       setError('');
     } catch (e) {
       setError((e as Error).message);
@@ -89,7 +115,7 @@ export default function Team() {
       setLoaded(true);
       setRefreshing(false);
     }
-  }, []);
+  }, [from, to]);
 
   useFocusEffect(
     useCallback(() => {
@@ -103,13 +129,29 @@ export default function Team() {
   const shown = staff
     .filter((r) => !role || r.role === role)
     .sort((a, b) => (a.status === b.status ? pctOf(b) - pctOf(a) : a.status === 'Active' ? -1 : 1));
-  const monthName = new Date().toLocaleDateString(undefined, { month: 'long' });
+  const short = (d: Date) => d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  const sameDay = from.getTime() === to.getTime();
+  const rangeText = sameDay ? short(from) : `${short(from)} – ${short(to)}`;
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <Header title="Team" subtitle={loaded ? `${staff.length} ${staff.length === 1 ? 'employee' : 'employees'} · ${monthName}` : 'Loading…'} />
+      <Header title="Team" subtitle={loaded ? `${staff.length} ${staff.length === 1 ? 'employee' : 'employees'} · ${rangeText}` : 'Loading…'} />
       <View style={styles.controls}>
-        <Segmented items={[...TABS]} value={tab} onChange={(v) => setTab(v as Tab)} />
+        <Row gap={10} style={styles.addButtons}>
+          <Button label="Add employee" icon="plus" small flex onPress={() => router.push('/team/new')} />
+          <Button label="Add target" icon="target" variant="outline" small flex onPress={() => router.push('/team/target')} />
+        </Row>
+        <Row gap={8}>
+          <DateRangeFilter
+            from={from}
+            to={to}
+            onChange={(f, t) => {
+              setFrom(f);
+              setTo(t);
+            }}
+          />
+          <SingleSelectFilter title="Role" options={TABS} value={tab} onChange={(v) => setTab(v as Tab)} />
+        </Row>
       </View>
 
       {!loaded ? (
@@ -155,10 +197,13 @@ export default function Team() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  addButtons:{ marginBottom:10 },
   controls: { paddingHorizontal: 20, paddingBottom: 12 },
   list: { paddingHorizontal: 20, paddingBottom: 40, gap: 12, flexGrow: 1 },
   pill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   track: { height: 6, borderRadius: 4, backgroundColor: colors.slateSoft, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 4 },
+  kpis: { flexDirection: 'row', backgroundColor: colors.bg, borderRadius: 12, paddingVertical: 8 },
+  kpi: { flex: 1, alignItems: 'center', gap: 2, paddingHorizontal: 2 },
   empty: { alignItems: 'center', justifyContent: 'center', gap: 10, paddingTop: 60 },
 });

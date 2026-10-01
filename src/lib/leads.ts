@@ -97,6 +97,21 @@ export function fetchLeads(opts: { admin: boolean; pool?: boolean; page: number;
 }
 
 /**
+ * Every lead of the list (same scope as fetchLeads), read in pages of 100 (capped at 3,000).
+ * The leads screen filters by several statuses / priorities / cities at once, which the API cannot do.
+ */
+export async function fetchAllLeads(opts: { admin: boolean; pool?: boolean; search?: string }): Promise<Lead[]> {
+  const path = opts.pool ? '/leads/pool' : opts.admin ? '/leads/all' : '/leads/my';
+  const all: Lead[] = [];
+  for (let page = 1; page <= 30; page++) {
+    const res = await api<LeadPage>(path, { query: { page, limit: 100, search: opts.search?.trim() } });
+    all.push(...res.data);
+    if (all.length >= res.total || res.data.length === 0) break;
+  }
+  return all;
+}
+
+/**
  * Open leads that have a scheduled follow-up (nextActionDate) (employees: /leads/my, admin: /leads/all).
  * The date-range filter only matches leads that have a date; closed leads are dropped here.
  */

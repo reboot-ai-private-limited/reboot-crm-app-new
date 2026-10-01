@@ -32,6 +32,8 @@ export type CustomerDetails = {
     address?: string;
     category?: string;
     joinedDate?: string;
+    /** The lead this customer was converted from. */
+    leadId?: string | null;
     isActive: boolean;
   };
   services: {
@@ -64,8 +66,44 @@ export function fetchCustomers(opts: { page: number; search?: string }) {
   });
 }
 
+/**
+ * Every customer matching the search, read in pages of 100 (capped at 3,000).
+ * The customers screen filters by several employees at once, which the API cannot do.
+ */
+export async function fetchAllCustomers(opts: { search?: string }): Promise<CustomerRow[]> {
+  const all: CustomerRow[] = [];
+  for (let page = 1; page <= 30; page++) {
+    const res = await api<CustomerPage>('/customers', { query: { page, limit: 100, search: opts.search?.trim() } });
+    all.push(...res.data);
+    if (all.length >= res.total || res.data.length === 0) break;
+  }
+  return all;
+}
+
+/** Display name of the employee a customer belongs to. */
+export function rmName(rm: CustomerRow['assignedRM']) {
+  if (!rm) return '';
+  return rm.fullName || [rm.firstName, rm.lastName].filter(Boolean).join(' ') || 'Unknown user';
+}
+
 export function fetchCustomer(id: string) {
   return api<CustomerDetails>(`/customers/${id}`);
+}
+
+/** Where the web app lives (same setting the proposal links use). */
+const WEB_URL = (process.env.EXPO_PUBLIC_WEB_URL ?? '').replace(/\/+$/, '');
+
+export type InvoiceChannel = 'WHATSAPP' | 'COPY_LINK';
+
+/**
+ * POST /invoices/:id/send — creates the public link on first use and logs the send.
+ * WHATSAPP also messages the customer through WABridge. Returns the link the customer sees
+ * (Proforma with the number hidden until fully paid, then the Billing invoice).
+ */
+export async function sendInvoice(id: string, channel: InvoiceChannel) {
+  const { publicToken } = await api<{ publicToken: string }>(`/invoices/${id}/send`, { method: 'POST', body: { deliveryChannel: channel } });
+  if (!WEB_URL) throw new Error('Invoice links need EXPO_PUBLIC_WEB_URL in the app settings.');
+  return `${WEB_URL}/public/invoice/${publicToken}`;
 }
 
 export const rupees = (n?: number) => `₹${(n ?? 0).toLocaleString('en-IN')}`;

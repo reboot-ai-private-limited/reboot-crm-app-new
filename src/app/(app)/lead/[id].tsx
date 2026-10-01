@@ -519,7 +519,7 @@ export default function LeadDetails() {
           <Row gap={10}>
             {!closed ? (
               <Button
-                label={nextAction ? "Follow-up" : "Schedule follow-up"}
+                label={nextAction ? "Follow-up" : "Add follow-up"}
                 icon="clock"
                 variant="outline"
                 flex
@@ -541,9 +541,7 @@ export default function LeadDetails() {
               weight="400"
               align="center"
             >
-              {closed
-                ? `This lead is ${statusLabel(lead.status).toLowerCase()}. Only an admin can re-open it. You can still add notes.`
-                : "Only the lead owner or an admin can change this lead."}
+              {"Only the lead owner or an admin can change this lead."}
             </AppText>
           </Card>
         )}

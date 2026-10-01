@@ -46,7 +46,8 @@ export function Button({ label, onPress, variant = 'primary', icon, small, flex,
         ) : icon ? (
           <Icon name={icon} size={small ? 15 : 18} color={v.fg} />
         ) : null}
-        <AppText weight="600" color={v.fg} style={{ fontSize: small ? 13 : 15 }}>
+        {/* One line, shrinking instead of wrapping when two buttons share a row. */}
+        <AppText weight="600" color={v.fg} numberOfLines={1} style={{ fontSize: small ? 13 : 15, flexShrink: 1 }}>
           {label}
         </AppText>
       </View>
@@ -56,7 +57,7 @@ export function Button({ label, onPress, variant = 'primary', icon, small, flex,
 
 const styles = StyleSheet.create({
   base: { alignItems: 'center', justifyContent: 'center' },
-  large: { paddingVertical: 16, paddingHorizontal: 20, borderRadius: radius.md + 2 },
+  large: { paddingVertical: 16, paddingHorizontal: 16, borderRadius: radius.md + 2 },
   small: { paddingVertical: 9, paddingHorizontal: 12, borderRadius: radius.sm },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '100%' },
 });

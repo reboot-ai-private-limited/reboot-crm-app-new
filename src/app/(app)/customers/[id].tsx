@@ -1,13 +1,13 @@
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Linking, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Icon, IconName } from '@/components/ui/Icon';
 import { Avatar, Card, Header, Row, SectionHeader } from '@/components/ui/layout';
-import { CustomerDetails, fetchCustomer, InvoiceStatus, rupees, shortDate } from '@/lib/customers';
+import { CustomerDetails, fetchCustomer, InvoiceStatus, rupees, sendInvoice, shortDate } from '@/lib/customers';
 import { titleCase } from '@/lib/leads';
 import { ColorName, colors } from '@/theme';
 
@@ -91,6 +91,29 @@ export default function CustomerDetailsScreen() {
     setRefreshing(false);
   };
 
+  // Invoice actions: `busy` is "<invoiceId>:<action>" while one runs; `notice` reports the result.
+  const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(null);
+
+  const act = async (invoiceId: string, action: 'view' | 'whatsapp' | 'share') => {
+    setBusy(`${invoiceId}:${action}`);
+    setNotice(null);
+    try {
+      if (action === 'whatsapp') {
+        await sendInvoice(invoiceId, 'WHATSAPP');
+        setNotice({ text: 'Invoice link sent to the customer on WhatsApp.', ok: true });
+      } else {
+        const link = await sendInvoice(invoiceId, 'COPY_LINK');
+        if (action === 'view') await Linking.openURL(link);
+        else await Share.share({ message: link });
+      }
+    } catch (e) {
+      setNotice({ text: (e as Error).message, ok: false });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   if (!data) {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
@@ -143,6 +166,9 @@ export default function CustomerDetailsScreen() {
               <Button label="WhatsApp" icon="chat" variant="outline" flex onPress={() => Linking.openURL(`https://wa.me/91${customer.mobile}`)} />
             </Row>
           ) : null}
+          {customer.leadId ? (
+            <Button label="View lead" icon="target" variant="outline" onPress={() => router.push({ pathname: '/lead/[id]', params: { id: String(customer.leadId) } })} />
+          ) : null}
         </Card>
 
         <Row gap={12}>
@@ -184,6 +210,16 @@ export default function CustomerDetailsScreen() {
         )}
 
         <SectionHeader title={`Invoices (${invoices.length})`} />
+        {notice ? (
+          <AppText variant="label" color={notice.ok ? 'success' : 'danger'}>
+            {notice.text}
+          </AppText>
+        ) : null}
+        {invoices.length > 0 ? (
+          <AppText variant="caption" color="textSubtle">
+            The customer sees a Proforma invoice (number hidden) until it is fully paid, then the Billing invoice.
+          </AppText>
+        ) : null}
         {invoices.length === 0 ? (
           <AppText color="textMuted">No invoices yet.</AppText>
         ) : (
@@ -222,6 +258,13 @@ export default function CustomerDetailsScreen() {
                   <AppText variant="caption" color="textSubtle">
                     Due date {dueDate}
                   </AppText>
+                ) : null}
+                {inv.status !== 'CANCELLED' ? (
+                  <Row gap={8} style={{ marginTop: 4 }}>
+                    <Button label="View" icon="eye" variant="outline" small flex loading={busy === `${inv._id}:view`} onPress={() => act(inv._id, 'view')} />
+                    <Button label="WhatsApp" icon="chat" variant="outline" small flex loading={busy === `${inv._id}:whatsapp`} disabled={!customer.mobile} onPress={() => act(inv._id, 'whatsapp')} />
+                    <Button label="Share" icon="send" small flex loading={busy === `${inv._id}:share`} onPress={() => act(inv._id, 'share')} />
+                  </Row>
                 ) : null}
               </Card>
             );

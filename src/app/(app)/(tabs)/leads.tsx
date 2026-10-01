@@ -1,18 +1,36 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Linking, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { Icon } from '@/components/ui/Icon';
 import { Avatar, Card, Field, FilterChips, Header, IconButton, Row } from '@/components/ui/layout';
+import { FilterOption, MultiSelectFilter } from '@/components/ui/MultiSelectFilter';
 import { PRIORITY_TONE, statusTone } from '@/components/leads/meta';
-import { fetchLeads, Lead, LEAD_STATUSES, LeadStatus, statusLabel, titleCase } from '@/lib/leads';
+import { fetchAllLeads, Lead, LEAD_STATUSES, statusLabel, titleCase } from '@/lib/leads';
 import { useAuth } from '@/store/auth';
 import { ColorName, colors } from '@/theme';
 
-const FILTERS: ('All' | LeadStatus)[] = ['All', ...LEAD_STATUSES];
-const filterLabel = (f: 'All' | LeadStatus) => (f === 'All' ? 'All' : statusLabel(f));
+const PRIORITIES = ['HOT', 'WARM', 'COLD'] as const;
+const NO_USERS: string[] = [];
+
+/** One option per distinct value found in the leads, with how many leads have it. */
+function optionsFrom(values: (string | undefined | null)[], label: (v: string) => string, order?: readonly string[]): FilterOption[] {
+  const counts = new Map<string, number>();
+  for (const v of values) if (v) counts.set(v, (counts.get(v) ?? 0) + 1);
+  const keys = [...counts.keys()];
+  keys.sort(order ? (a, b) => order.indexOf(a) - order.indexOf(b) : (a, b) => label(a).localeCompare(label(b)));
+  return keys.map((value) => ({ value, label: label(value), count: counts.get(value) }));
+}
+
+/** Id and name of the employee a lead is assigned to (the API populates `assignedTo` with the name). */
+function ownerOf(l: Lead): { id: string; name: string } | null {
+  const a = l.assignedTo;
+  if (!a) return null;
+  if (typeof a === 'string') return { id: a, name: 'Unknown user' };
+  return { id: a._id, name: a.fullName || 'Unknown user' };
+}
 
 function formatDate(iso?: string | null) {
   if (!iso) return null;
@@ -85,21 +103,26 @@ export default function LeadsScreen() {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
-  const [status, setStatus] = useState<'All' | LeadStatus>('All');
-  const [pool, setPool] = useState(false);
-  const mineLabel = isAdmin ? 'All leads' : 'My leads';
+  const [statusSel, setStatusSel] = useState<string[]>([]);
+  const [prioritySel, setPrioritySel] = useState<string[]>([]);
+  const [citySel, setCitySel] = useState<string[]>([]);
+  // Admin → All leads only: show the leads of the selected users.
+  const [userSel, setUserSel] = useState<string[]>([]);
+  // Admin: My leads (assigned to the admin), All leads (everyone's), Pool. Employees: My leads, Pool.
+  const [scope, setScope] = useState<string>(isAdmin ? 'All leads' : 'My leads');
+  const pool = scope === 'Pool';
+  const allScope = isAdmin && scope === 'All leads';
+  const scopes = isAdmin ? ['My leads', 'All leads', 'Pool'] : ['My leads', 'Pool'];
 
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [loadingMore, setLoadingMore] = useState(false);
+  // Every lead of the current scope (search + pool/mine); the three dropdown filters are applied on top.
+  const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   // Reference time for 'overdue', refreshed with each response.
   const [now, setNow] = useState(() => new Date().getTime());
   const requestId = useRef(0);
-  // The list is 'loading' until a response for the current search/filter/role has arrived.
-  const key = `${isAdmin}|${pool}|${query}|${status}`;
+  // The list is 'loading' until a response for the current search/role has arrived.
+  const key = `${scope}|${query}`;
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const loading = loadedKey !== key;
 
@@ -110,42 +133,35 @@ export default function LeadsScreen() {
   }, [search]);
 
   const load = useCallback(
-    async (p: number, mode: 'initial' | 'more' | 'refresh') => {
+    async (mode: 'initial' | 'refresh') => {
       const id = ++requestId.current;
-      if (mode === 'more') setLoadingMore(true);
       if (mode === 'refresh') setRefreshing(true);
-      if (mode !== 'initial') setError('');
+      setError('');
       try {
-        const res = await fetchLeads({ admin: isAdmin, pool, page: p, search: query, status: status === 'All' ? undefined : status });
-        if (id !== requestId.current) return; // a newer search/filter superseded this one
-        setLeads((prev) => (p === 1 ? res.data : [...prev, ...res.data]));
+        const res = await fetchAllLeads({ admin: allScope, pool, search: query });
+        if (id !== requestId.current) return; // a newer search superseded this one
+        setAllLeads(res);
         setNow(new Date().getTime());
-        setTotal(res.total);
-        setPage(p);
-        setError('');
       } catch (e) {
         if (id === requestId.current) setError((e as Error).message);
       } finally {
         if (id === requestId.current) {
           setLoadedKey(key);
-          setLoadingMore(false);
           setRefreshing(false);
         }
       }
     },
-    [isAdmin, pool, query, status, key],
+    [allScope, pool, query, key],
   );
 
-  // (Re)load page 1 whenever search, filter or role changes. State is only set after the await.
+  // (Re)load whenever the search or role changes. State is only set after the await.
   useEffect(() => {
     const id = ++requestId.current;
-    fetchLeads({ admin: isAdmin, pool, page: 1, search: query, status: status === 'All' ? undefined : status })
+    fetchAllLeads({ admin: allScope, pool, search: query })
       .then((res) => {
         if (id !== requestId.current) return;
-        setLeads(res.data);
+        setAllLeads(res);
         setNow(new Date().getTime());
-        setTotal(res.total);
-        setPage(1);
         setError('');
       })
       .catch((e: Error) => {
@@ -154,7 +170,7 @@ export default function LeadsScreen() {
       .finally(() => {
         if (id === requestId.current) setLoadedKey(key);
       });
-  }, [isAdmin, pool, query, status, key]);
+  }, [allScope, pool, query, key]);
 
   // Coming back from Add / Details: quietly refresh page 1 so new or changed leads show up.
   const firstFocus = useRef(true);
@@ -164,19 +180,54 @@ export default function LeadsScreen() {
         firstFocus.current = false;
         return;
       }
-      load(1, 'more');
+      load('refresh');
     }, [load]),
   );
 
-  const hasMore = leads.length < total;
+  // Dropdown options come from the leads that are actually there.
+  const statusOptions = useMemo(() => optionsFrom(allLeads.map((l) => l.status), statusLabel, LEAD_STATUSES), [allLeads]);
+  const priorityOptions = useMemo(() => optionsFrom(allLeads.map((l) => l.priority), (v) => v, PRIORITIES), [allLeads]);
+  const cityOptions = useMemo(() => optionsFrom(allLeads.map((l) => l.city?.trim().toLowerCase()), titleCase), [allLeads]);
+  const userOptions = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const l of allLeads) {
+      const o = ownerOf(l);
+      if (o) names.set(o.id, o.name);
+    }
+    return optionsFrom(allLeads.map((l) => ownerOf(l)?.id), (id) => names.get(id) ?? id);
+  }, [allLeads]);
+
+  // The user filter only exists (and only applies) in Admin → All leads.
+  const activeUserSel = allScope ? userSel : NO_USERS;
+
+  // Within a dropdown any ticked value matches; across dropdowns all must match.
+  const leads = useMemo(
+    () =>
+      allLeads.filter(
+        (l) =>
+          (statusSel.length === 0 || statusSel.includes(l.status)) &&
+          (prioritySel.length === 0 || (!!l.priority && prioritySel.includes(l.priority))) &&
+          (citySel.length === 0 || citySel.includes(l.city?.trim().toLowerCase() ?? '')) &&
+          (activeUserSel.length === 0 || activeUserSel.includes(ownerOf(l)?.id ?? '')),
+      ),
+    [allLeads, statusSel, prioritySel, citySel, activeUserSel],
+  );
+  const total = leads.length;
+  const filtering = statusSel.length + prioritySel.length + citySel.length + activeUserSel.length > 0;
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <Header title={pool ? 'Lead pool' : mineLabel} subtitle={loading ? 'Loading…' : `${total} ${total === 1 ? 'lead' : 'leads'}`} right={<IconButton icon="clock" onPress={() => router.push('/followups')} />} />
+      <Header title={pool ? 'Lead pool' : scope} subtitle={loading ? 'Loading…' : `${total} ${total === 1 ? 'lead' : 'leads'}`} right={<IconButton icon="clock" onPress={() => router.push('/followups')} />} />
       <View style={styles.controls}>
-        <FilterChips items={[mineLabel, 'Pool']} value={pool ? 'Pool' : mineLabel} onChange={(l) => setPool(l === 'Pool')} />
+        <FilterChips items={scopes} value={scope} onChange={setScope} />
         <Field icon="search" placeholder="Search name, company or phone" value={search} onChangeText={setSearch} />
-        <FilterChips items={FILTERS.map(filterLabel)} value={filterLabel(status)} onChange={(l) => setStatus(FILTERS.find((f) => filterLabel(f) === l) ?? 'All')} />
+        {/* Swipe sideways when the buttons don't fit the screen. */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+          <MultiSelectFilter label="Status" options={statusOptions} selected={statusSel} onChange={setStatusSel} />
+          <MultiSelectFilter label="Priority" options={priorityOptions} selected={prioritySel} onChange={setPrioritySel} />
+          <MultiSelectFilter label="City" options={cityOptions} selected={citySel} onChange={setCitySel} />
+          {allScope ? <MultiSelectFilter label="User" options={userOptions} selected={userSel} onChange={setUserSel} /> : null}
+        </ScrollView>
       </View>
 
       {loading ? (
@@ -187,32 +238,19 @@ export default function LeadsScreen() {
           keyExtractor={(l) => l._id}
           renderItem={({ item }) => <LeadRow lead={item} now={now} onPress={() => router.push({ pathname: '/lead/[id]', params: { id: item._id } })} />}
           contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(1, 'refresh')} tintColor={colors.primary} />}
-          onEndReachedThreshold={0.4}
-          onEndReached={() => {
-            if (hasMore && !loadingMore && !error) load(page + 1, 'more');
-          }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load('refresh')} tintColor={colors.primary} />}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Icon name={error ? 'alert' : 'users'} size={32} color={error ? 'danger' : 'textSubtle'} />
               <AppText color={error ? 'danger' : 'textMuted'} align="center">
-                {error || (query || status !== 'All' ? 'No leads match your search.' : pool ? 'The lead pool is empty.' : 'No leads assigned to you yet.')}
+                {error || (query || filtering ? 'No leads match your search.' : pool ? 'The lead pool is empty.' : allScope ? 'No leads assigned yet.' : 'No leads assigned to you yet.')}
               </AppText>
               {error ? (
-                <AppText color="primary" weight="600" onPress={() => load(1, 'initial')}>
+                <AppText color="primary" weight="600" onPress={() => load('initial')}>
                   Try again
                 </AppText>
               ) : null}
             </View>
-          }
-          ListFooterComponent={
-            loadingMore ? (
-              <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} />
-            ) : error && leads.length > 0 ? (
-              <AppText color="danger" align="center" onPress={() => load(page + 1, 'more')} style={{ marginVertical: 16 }}>
-                {error} Tap to retry.
-              </AppText>
-            ) : null
           }
         />
       )}

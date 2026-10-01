@@ -11,6 +11,8 @@ export default function AppLayout() {
       <Stack.Screen name="lead/proposals/[id]" />
       <Stack.Screen name="followups" />
       <Stack.Screen name="team/[id]" />
+      <Stack.Screen name="team/new" />
+      <Stack.Screen name="team/target" />
       <Stack.Screen name="actions/[kind]" />
       <Stack.Screen name="customers/index" />
       <Stack.Screen name="customers/[id]" />

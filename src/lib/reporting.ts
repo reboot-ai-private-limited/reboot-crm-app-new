@@ -26,7 +26,7 @@ export type DashboardRow = {
 
 export const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', BusinessAdvisor: 'Business Advisor', FieldSales: 'Field Sales' };
 
-export const RANGES =['This month', 'Last 7 days', 'Last 30 days', 'Last month'] as const;
+export const RANGES = ['Today', 'This month', 'Last 7 days', 'Last 30 days', 'Last month'] as const;
 export type Range = (typeof RANGES)[number];
 
 /** Start/end dates of a period. `targetMonth` is the month whose targets the period is judged against. */
@@ -36,6 +36,8 @@ export function rangeDates(r: Range) {
   const m = now.getMonth();
   const daysAgo = (n: number) => new Date(y, m, now.getDate() - n);
   switch (r) {
+    case 'Today':
+      return { start: now, end: now, targetMonth: 'this' as const };
     case 'Last 7 days':
       return { start: daysAgo(6), end: now, targetMonth: 'this' as const };
     case 'Last 30 days':
@@ -81,6 +83,51 @@ export const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).p
 
 export function fetchDashboardRows(start: Date, end: Date) {
   return api<DashboardRow[]>('/reporting/dashboard-table', { query: { startDate: ymd(start), endDate: ymd(end) } });
+}
+
+export type EmployeeRole = 'Admin' | 'BusinessAdvisor' | 'FieldSales';
+
+/** Employee list item from GET /employees (only what the Team screen needs). */
+export type EmployeeOption = { id: string; fullName: string; role: EmployeeRole; status: string };
+
+/** Admin: every employee (GET /employees, up to 100). */
+export async function fetchEmployees() {
+  const res = await api<{ data: EmployeeOption[] }>('/employees', { query: { limit: 100 } });
+  return res.data;
+}
+
+/** Admin: POST /employees — same fields as the web "Add Employee" form (without documents). */
+export function createEmployee(input: { fullName: string; mobile: string; email: string; role: EmployeeRole }) {
+  return api<unknown>('/employees', { method: 'POST', body: input });
+}
+
+/** Financial year (April–March) a month falls in, as the backend expects it: "2026-2027". */
+export function financialYearOf(year: number, month: number) {
+  const start = month < 4 ? year - 1 : year;
+  return `${start}-${start + 1}`;
+}
+
+export type MonthlyTarget = { month: number; targetRevenue: number; achievedAmount: number; collectionAmount: number };
+
+/** The saved target of one employee for a month (1–12), or null when none is set. */
+export async function fetchTarget(employeeId: string, year: number, month: number): Promise<MonthlyTarget | null> {
+  const targets = await api<MonthlyTarget[]>('/reporting/targets', { query: { employeeId, financialYear: financialYearOf(year, month) } });
+  return targets.find((t) => t.month === month) ?? null;
+}
+
+/** Admin: POST /reporting/targets — creates or replaces the month's target. */
+export function saveTarget(input: { employeeId: string; year: number; month: number; targetRevenue: number; achievedAmount: number; collectionAmount: number }) {
+  return api<unknown>('/reporting/targets', {
+    method: 'POST',
+    body: {
+      employeeId: input.employeeId,
+      financialYear: financialYearOf(input.year, input.month),
+      month: input.month,
+      targetRevenue: input.targetRevenue,
+      achievedAmount: input.achievedAmount,
+      collectionAmount: input.collectionAmount,
+    },
+  });
 }
 
 /** 1st of the current month → today. */
