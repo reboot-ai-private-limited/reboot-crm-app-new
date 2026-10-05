@@ -8,6 +8,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Avatar, Card, FilterChips, Header, Row } from '@/components/ui/layout';
 import { statusTone } from '@/components/leads/meta';
 import { fetchFollowUps, Lead, statusLabel, titleCase } from '@/lib/leads';
+import { dialDigits } from '@/lib/phone';
 import { useAuth } from '@/store/auth';
 import { ColorName, colors } from '@/theme';
 
@@ -59,7 +60,7 @@ function FollowUpRow({ lead, tone, onPress }: { lead: Lead; tone: ColorName; onP
           ) : null}
         </View>
         {lead.mobile ? (
-          <Pressable onPress={() => Linking.openURL(`tel:${lead.mobile}`)} style={styles.call} hitSlop={8}>
+          <Pressable onPress={() => Linking.openURL(`tel:+${dialDigits(lead)}`)} style={styles.call} hitSlop={8}>
             <Icon name="phone" size={16} color="success" />
           </Pressable>
         ) : null}

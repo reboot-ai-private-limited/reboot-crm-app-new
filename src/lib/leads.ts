@@ -11,7 +11,12 @@ export type Lead = {
   _id: string;
   companyName?: string;
   contactName?: string;
+  /** National number, digits only. */
   mobile?: string;
+  /** Calling code ("91", "971"). Missing on old leads = India. */
+  countryCode?: string;
+  /** Full number, "+919876543210". */
+  phoneE164?: string;
   email?: string;
   city?: string;
   address?: string;
@@ -155,6 +160,8 @@ export type LeadInput = {
   companyName: string;
   contactName: string;
   mobile?: string;
+  /** Calling code of the mobile number, default "91". Only sent together with a mobile. */
+  countryCode?: string;
   email?: string;
   city: string;
   category: string;
@@ -169,6 +176,8 @@ function clean(input: LeadInput) {
     const t = (v ?? '').trim();
     if (t) out[k] = t;
   }
+  // The backend rejects a country code without a number.
+  if (!out.mobile) delete out.countryCode;
   return out;
 }
 

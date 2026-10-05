@@ -9,6 +9,7 @@ import { Avatar, Card, Field, Header, Row } from '@/components/ui/layout';
 import { MultiSelectFilter } from '@/components/ui/MultiSelectFilter';
 import { CustomerRow, fetchAllCustomers, rmName, rupees } from '@/lib/customers';
 import { titleCase } from '@/lib/leads';
+import { dialDigits } from '@/lib/phone';
 import { useAuth } from '@/store/auth';
 import { colors } from '@/theme';
 
@@ -33,7 +34,7 @@ function CustomerCard({ customer, onPress }: { customer: CustomerRow; onPress: (
           ) : null}
         </View>
         {customer.mobile ? (
-          <Pressable onPress={() => Linking.openURL(`tel:${customer.mobile}`)} style={styles.call} hitSlop={8}>
+          <Pressable onPress={() => Linking.openURL(`tel:+${dialDigits(customer)}`)} style={styles.call} hitSlop={8}>
             <Icon name="phone" size={16} color="success" />
           </Pressable>
         ) : null}

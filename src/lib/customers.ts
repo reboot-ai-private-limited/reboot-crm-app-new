@@ -7,6 +7,8 @@ export type CustomerRow = {
   contactName: string;
   businessName: string;
   mobile?: string;
+  countryCode?: string;
+  phoneE164?: string;
   email?: string;
   city?: string;
   category?: string;
@@ -27,6 +29,8 @@ export type CustomerDetails = {
     contactName: string;
     businessName: string;
     mobile?: string;
+    countryCode?: string;
+    phoneE164?: string;
     email?: string;
     city?: string;
     address?: string;

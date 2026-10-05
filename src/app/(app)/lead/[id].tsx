@@ -36,6 +36,7 @@ import { MeetingCard } from "@/components/meetings/MeetingCard";
 import { MeetingForm } from "@/components/meetings/MeetingForm";
 import { dealError, DealForm, dealPayload, newDealForm } from "@/lib/deal";
 import { websiteLabel } from "@/lib/website";
+import { dialDigits, formatPhone } from "@/lib/phone";
 import {
   Activity,
   addNote,
@@ -462,13 +463,13 @@ export default function LeadDetails() {
               icon="phone"
               label="Call"
               disabled={!lead.mobile}
-              onPress={() => Linking.openURL(`tel:${lead.mobile}`)}
+              onPress={() => Linking.openURL(`tel:+${dialDigits(lead)}`)}
             />
             <QuickAction
               icon="chat"
               label="WhatsApp"
               disabled={!lead.mobile}
-              onPress={() => Linking.openURL(`https://wa.me/91${lead.mobile}`)}
+              onPress={() => Linking.openURL(`https://wa.me/${dialDigits(lead)}`)}
             />
             <QuickAction
               icon="mail"
@@ -561,7 +562,7 @@ export default function LeadDetails() {
           <InfoRow
             icon="phone"
             label="Mobile"
-            value={lead.mobile && `+91 ${lead.mobile}`}
+            value={lead.mobile ? formatPhone(lead) : undefined}
           />
           <InfoRow icon="mail" label="Email" value={lead.email} />
           <InfoRow icon="pin" label="City" value={titleCase(lead.city)} />

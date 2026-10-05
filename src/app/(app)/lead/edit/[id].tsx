@@ -38,6 +38,7 @@ export default function EditLead() {
       initial={{
         companyName: lead.companyName ?? '',
         contactName: lead.contactName ?? '',
+        countryCode: lead.countryCode ?? '91',
         mobile: lead.mobile ?? '',
         email: lead.email ?? '',
         city: cityFromDb(lead.city),

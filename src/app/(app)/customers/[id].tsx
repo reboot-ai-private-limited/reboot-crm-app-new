@@ -9,6 +9,7 @@ import { Icon, IconName } from '@/components/ui/Icon';
 import { Avatar, Card, Header, Row, SectionHeader } from '@/components/ui/layout';
 import { CustomerDetails, fetchCustomer, InvoiceStatus, rupees, sendInvoice, shortDate } from '@/lib/customers';
 import { titleCase } from '@/lib/leads';
+import { dialDigits, formatPhone } from '@/lib/phone';
 import { ColorName, colors } from '@/theme';
 
 const INVOICE_TONE: Record<InvoiceStatus, [ColorName, ColorName]> = {
@@ -162,8 +163,8 @@ export default function CustomerDetailsScreen() {
           </Row>
           {customer.mobile ? (
             <Row gap={10}>
-              <Button label="Call" icon="phone" variant="outline" flex onPress={() => Linking.openURL(`tel:${customer.mobile}`)} />
-              <Button label="WhatsApp" icon="chat" variant="outline" flex onPress={() => Linking.openURL(`https://wa.me/91${customer.mobile}`)} />
+              <Button label="Call" icon="phone" variant="outline" flex onPress={() => Linking.openURL(`tel:+${dialDigits(customer)}`)} />
+              <Button label="WhatsApp" icon="chat" variant="outline" flex onPress={() => Linking.openURL(`https://wa.me/${dialDigits(customer)}`)} />
             </Row>
           ) : null}
           {customer.leadId ? (
@@ -178,7 +179,7 @@ export default function CustomerDetailsScreen() {
 
         <Card>
           <InfoRow icon="user" label="Contact" value={customer.contactName} />
-          <InfoRow icon="phone" label="Mobile" value={customer.mobile} />
+          <InfoRow icon="phone" label="Mobile" value={customer.mobile ? formatPhone(customer) : undefined} />
           <InfoRow icon="mail" label="Email" value={customer.email} />
           <InfoRow icon="pin" label="City" value={titleCase(customer.city)} />
           <InfoRow icon="pin" label="Address" value={customer.address} />

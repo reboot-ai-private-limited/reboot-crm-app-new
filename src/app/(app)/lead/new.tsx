@@ -11,7 +11,7 @@ export default function AddLead() {
       title="Add lead"
       subtitle="Saved as a field lead with your current location"
       submitLabel="Save lead"
-      initial={{ companyName: '', contactName: '', mobile: '', email: '', city: '', category: '', address: '', website: '' }}
+      initial={{ companyName: '', contactName: '', countryCode: '91', mobile: '', email: '', city: '', category: '', address: '', website: '' }}
       onSubmit={async (v) => {
         const lead = await createLead(v);
         router.replace({ pathname: '/lead/[id]', params: { id: lead._id } });

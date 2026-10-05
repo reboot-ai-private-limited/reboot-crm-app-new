@@ -9,6 +9,7 @@ import { Avatar, Card, Field, FilterChips, Header, IconButton, Row } from '@/com
 import { FilterOption, MultiSelectFilter } from '@/components/ui/MultiSelectFilter';
 import { PRIORITY_TONE, statusTone } from '@/components/leads/meta';
 import { fetchAllLeads, Lead, LEAD_STATUSES, statusLabel, titleCase } from '@/lib/leads';
+import { dialDigits } from '@/lib/phone';
 import { useAuth } from '@/store/auth';
 import { ColorName, colors } from '@/theme';
 
@@ -62,7 +63,7 @@ function LeadRow({ lead, now, onPress }: { lead: Lead; now: number; onPress: () 
           ) : null}
         </View>
         {lead.mobile ? (
-          <Pressable onPress={() => Linking.openURL(`tel:${lead.mobile}`)} style={styles.call} hitSlop={8}>
+          <Pressable onPress={() => Linking.openURL(`tel:+${dialDigits(lead)}`)} style={styles.call} hitSlop={8}>
             <Icon name="phone" size={16} color="success" />
           </Pressable>
         ) : null}

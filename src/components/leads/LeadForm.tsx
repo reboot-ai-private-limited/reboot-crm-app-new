@@ -13,6 +13,7 @@ import { CITIES } from '@/constants/cities';
 import { ApiError } from '@/lib/api';
 import { LeadInput, statusLabel } from '@/lib/leads';
 import { isValidWebsite } from '@/lib/website';
+import { codeForLabel, COUNTRY_LABELS, DEFAULT_CALLING_CODE, isValidNumber, labelForCode } from '@/lib/phone';
 import { colors } from '@/theme';
 
 type Errors = Partial<Record<keyof LeadInput, string>>;
@@ -26,7 +27,8 @@ function validate(v: LeadInput): Errors {
   if (v.contactName.trim().length < 2) e.contactName = 'Enter at least 2 characters';
   const mobile = (v.mobile ?? '').trim();
   const email = (v.email ?? '').trim();
-  if (mobile && !/^\d{10}$/.test(mobile)) e.mobile = 'Mobile must be exactly 10 digits';
+  const code = v.countryCode || DEFAULT_CALLING_CODE;
+  if (mobile && !isValidNumber(code, mobile)) e.mobile = code === DEFAULT_CALLING_CODE ? 'Mobile must be exactly 10 digits' : `Enter a valid mobile number for +${code}`;
   if (email && !EMAIL.test(email)) e.email = 'Enter a valid email';
   if (!mobile && !email) e.mobile = 'Enter a mobile number or an email';
   if (!v.city) e.city = 'Select a city';
@@ -99,7 +101,17 @@ export function LeadForm({
           <AppText variant="label" color="textSubtle" weight="600" style={styles.group}>
             CONTACT
           </AppText>
-          <Field label="Mobile" icon="phone" placeholder="10-digit number" value={v.mobile ?? ''} onChangeText={set('mobile')} keyboardType="phone-pad" maxLength={10} error={errors.mobile} />
+          <SelectField label="Country code" icon="globe" value={labelForCode(v.countryCode)} options={COUNTRY_LABELS} onChange={(label) => set('countryCode')(codeForLabel(label))} />
+          <Field
+            label="Mobile"
+            icon="phone"
+            placeholder={(v.countryCode || DEFAULT_CALLING_CODE) === DEFAULT_CALLING_CODE ? '10-digit number' : 'Mobile number'}
+            value={v.mobile ?? ''}
+            onChangeText={set('mobile')}
+            keyboardType="phone-pad"
+            maxLength={15}
+            error={errors.mobile}
+          />
           <Field label="Email" icon="mail" placeholder="name@company.com" value={v.email ?? ''} onChangeText={set('email')} keyboardType="email-address" autoCapitalize="none" error={errors.email} />
           <AppText variant="caption" color="textSubtle">
             Mobile or email is required. Duplicates are checked when you save.
