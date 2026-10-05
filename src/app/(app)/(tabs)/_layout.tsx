@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router';
 
 import { IconName } from '@/components/ui/Icon';
 import { AnimatedTabIcon, TabButton } from '@/components/ui/TabBarParts';
+import { useUnreadCount } from '@/lib/notifications';
 import { useAuth } from '@/store/auth';
 import { colors } from '@/theme';
 
@@ -21,6 +22,8 @@ export default function TabsLayout() {
   const { isAdmin } = useAuth();
   const emp = isAdmin ? hidden : {};
   const adm = isAdmin ? {} : hidden;
+  // Number on the Alerts tab. Employees only (Admin has no Alerts tab).
+  const unread = useUnreadCount(!isAdmin);
 
   return (
     <Tabs
@@ -39,7 +42,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="leads" options={{ title: 'Leads', tabBarIcon: tab('users') }} />
       <Tabs.Screen name="meetings" options={{ title: 'Meetings', tabBarIcon: tab('calendar'), ...emp }} />
       <Tabs.Screen name="team" options={{ title: 'Team', tabBarIcon: tab('target'), ...adm }} />
-      <Tabs.Screen name="alerts" options={{ title: 'Alerts', tabBarIcon: tab('bell'), ...emp }} />
+      <Tabs.Screen name="alerts" options={{ title: 'Alerts', tabBarIcon: tab('bell'), tabBarBadge: unread > 0 ? (unread > 99 ? '99+' : unread) : undefined, ...emp }} />
       <Tabs.Screen name="actions" options={{ title: 'Action', tabBarIcon: tab('alert'), ...adm }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: tab('user') }} />
     </Tabs>
