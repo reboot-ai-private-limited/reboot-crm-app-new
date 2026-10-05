@@ -88,7 +88,7 @@ export function fetchDashboardRows(start: Date, end: Date) {
 export type EmployeeRole = 'Admin' | 'BusinessAdvisor' | 'FieldSales';
 
 /** Employee list item from GET /employees (only what the Team screen needs). */
-export type EmployeeOption = { id: string; fullName: string; role: EmployeeRole; status: string };
+export type EmployeeOption = { id: string; fullName: string; role: EmployeeRole; status: string; mobile?: string };
 
 /** Admin: every employee (GET /employees, up to 100). */
 export async function fetchEmployees() {

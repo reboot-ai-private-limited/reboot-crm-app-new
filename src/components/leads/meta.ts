@@ -35,6 +35,11 @@ const EVENT: Record<string, { label: string; icon: IconName; tone: ColorName }> 
   PROPOSAL_GENERATED: { label: 'Proposal generated', icon: 'file', tone: 'purple' },
   PROPOSAL_EDITED: { label: 'Proposal edited', icon: 'file', tone: 'purple' },
   PROPOSAL_SENT: { label: 'Proposal sent', icon: 'send', tone: 'purple' },
+  MEETING_SCHEDULED: { label: 'Meeting scheduled', icon: 'video', tone: 'warning' },
+  MEETING_RESCHEDULED: { label: 'Meeting rescheduled', icon: 'clock', tone: 'warning' },
+  MEETING_CANCELLED: { label: 'Meeting cancelled', icon: 'x', tone: 'slate' },
+  MEETING_DONE: { label: 'Meeting completed', icon: 'check', tone: 'success' },
+  MEETING_NOT_HAPPENED: { label: 'Meeting not happened', icon: 'alert', tone: 'danger' },
 };
 
 export function eventMeta(type: string) {
@@ -60,6 +65,17 @@ export function eventDetail(a: Activity): string | undefined {
       const when = d && !isNaN(d.getTime()) ? d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
       return [when && `For ${when}`, str(m.note)].filter(Boolean).join(' · ') || undefined;
     }
+    case 'MEETING_SCHEDULED':
+    case 'MEETING_RESCHEDULED': {
+      const d = str(m.startAt) ? new Date(m.startAt as string) : null;
+      const when = d && !isNaN(d.getTime()) ? d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+      const dur = typeof m.durationMin === 'number' ? ` (${m.durationMin}m)` : '';
+      return when ? `Scheduled for ${when}${dur}` : undefined;
+    }
+    case 'MEETING_CANCELLED':
+    case 'MEETING_NOT_HAPPENED':
+    case 'MEETING_DONE':
+      return str(m.note);
     case 'STATUS_CHANGED': {
       const move = m.newStatus ? `${statusLabel(str(m.oldStatus)) || '—'} → ${statusLabel(str(m.newStatus))}` : '';
       const value = typeof m.dealValue === 'number' ? `₹${m.dealValue.toLocaleString('en-IN')}` : '';

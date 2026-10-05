@@ -1,5 +1,5 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -32,6 +32,8 @@ import {
 } from "@/components/ui/layout";
 import { Sheet } from "@/components/ui/Sheet";
 import { DealCloseForm } from "@/components/leads/DealCloseForm";
+import { MeetingCard } from "@/components/meetings/MeetingCard";
+import { MeetingForm } from "@/components/meetings/MeetingForm";
 import { dealError, DealForm, dealPayload, newDealForm } from "@/lib/deal";
 import {
   Activity,
@@ -49,11 +51,27 @@ import {
   statusLabel,
   titleCase,
 } from "@/lib/leads";
+import {
+  cancelMeeting,
+  fetchMeetings,
+  markMeetingStatus,
+  Meeting,
+  shouldPoll,
+} from "@/lib/meetings";
 import { useAuth } from "@/store/auth";
 import { ColorName, colors } from "@/theme";
 
 /** Which bottom sheet is open. The status sheet has two steps: the list, then reason / deal value when needed. */
-type SheetKind = "note" | "visit" | "nextAction" | "status" | null;
+type SheetKind =
+  | "note"
+  | "visit"
+  | "nextAction"
+  | "status"
+  | "meeting"
+  | "reschedule"
+  | "cancel"
+  | "notHappened"
+  | null;
 
 const needsDetails = (s: LeadStatus) =>
   REASON_REQUIRED.includes(s) || s === "DEAL_CLOSED";
@@ -145,11 +163,16 @@ function InfoRow({
 export default function LeadDetails() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { session, isAdmin } = useAuth();
   // Log visit is for field staff only; office roles just add notes.
-  const isField = useAuth().session?.role === "FieldSales";
+  const isField = session?.role === "FieldSales";
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [notHappenedNote, setNotHappenedNote] = useState("");
   const [allowed, setAllowed] = useState<LeadStatus[]>([]);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -169,14 +192,23 @@ export default function LeadDetails() {
 
   const load = useCallback(async () => {
     try {
-      const r = await fetchLead(id);
-      setLead(r.lead);
-      setActivities(r.activities);
-      setAllowed(r.allowedNextStatuses ?? []);
+      const [leadRes, meetingsRes] = await Promise.allSettled([
+        fetchLead(id),
+        fetchMeetings(id),
+      ]);
+      if (leadRes.status === "fulfilled") {
+        const r = leadRes.value;
+        setLead(r.lead);
+        setActivities(r.activities);
+        setAllowed(r.allowedNextStatuses ?? []);
+        setError("");
+      } else {
+        setError((leadRes.reason as Error).message);
+      }
+      if (meetingsRes.status === "fulfilled") {
+        setMeetings(meetingsRes.value);
+      }
       setNow(new Date().getTime());
-      setError("");
-    } catch (e) {
-      setError((e as Error).message);
     } finally {
       setRefreshing(false);
     }
@@ -188,6 +220,15 @@ export default function LeadDetails() {
       load();
     }, [load]),
   );
+
+  // Poll every 30s while a meeting is in progress or starts within 60 minutes
+  useEffect(() => {
+    if (!shouldPoll(meetings)) return;
+    const interval = setInterval(() => {
+      load();
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [meetings, load]);
 
   const flash = (msg: string) => {
     setToast(msg);
@@ -396,7 +437,11 @@ export default function LeadDetails() {
               />
             ) : null}
           </Row>
-          <Row gap={0} style={styles.quickRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={[styles.quickRow, { minWidth: "100%", gap: 8 }]}
+          >
             <QuickAction
               icon="phone"
               label="Call"
@@ -427,7 +472,14 @@ export default function LeadDetails() {
                 onPress={() => openSheet("visit")}
               />
             ) : null}
-          </Row>
+            {!closed && canChange ? (
+              <QuickAction
+                icon="video"
+                label="Meeting"
+                onPress={() => openSheet("meeting")}
+              />
+            ) : null}
+          </ScrollView>
         </Card>
 
         {/* Outcome of a closed lead */}
@@ -562,6 +614,65 @@ export default function LeadDetails() {
             <Icon name="chevR" size={16} color="textSubtle" />
           </Row>
         </Card>
+
+        {/* Meetings */}
+        {(!closed || meetings.length > 0) && (
+          <View style={{ gap: 10 }}>
+            <Row style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <AppText variant="section">Meetings ({meetings.length})</AppText>
+              {!closed && canChange ? (
+                <Button
+                  label="Schedule"
+                  variant="soft"
+                  icon="plus"
+                  small
+                  onPress={() => openSheet("meeting")}
+                />
+              ) : null}
+            </Row>
+
+            {meetings.length === 0 ? (
+              <Card>
+                <AppText color="textMuted" align="center" style={{ paddingVertical: 12 }}>
+                  No meetings scheduled yet.
+                </AppText>
+              </Card>
+            ) : (
+              meetings.map((m) => (
+                <MeetingCard
+                  key={m._id}
+                  meeting={m}
+                  canModify={canChange}
+                  isAdmin={isAdmin}
+                  onReschedule={(targetMeeting) => {
+                    setSelectedMeeting(targetMeeting);
+                    setSheet("reschedule");
+                  }}
+                  onCancel={(targetMeeting) => {
+                    setSelectedMeeting(targetMeeting);
+                    setCancelReason("");
+                    setSheetError("");
+                    setSheet("cancel");
+                  }}
+                  onMarkDone={(targetMeeting) => {
+                    run(
+                      () => markMeetingStatus(targetMeeting._id, { status: "DONE" }),
+                      "Meeting marked as done",
+                    );
+                  }}
+                  onNotHappened={(targetMeeting) => {
+                    setSelectedMeeting(targetMeeting);
+                    setNotHappenedNote("");
+                    setSheetError("");
+                    setSheet("notHappened");
+                  }}
+                  onRefresh={load}
+                  onToast={flash}
+                />
+              ))
+            )}
+          </View>
+        )}
 
         {/* Activity */}
         <AppText variant="section">Activity</AppText>
@@ -864,6 +975,121 @@ export default function LeadDetails() {
             ) : null}
           </>
         )}
+      </Sheet>
+
+      {/* Schedule Meeting Sheet */}
+      <Sheet
+        visible={sheet === "meeting"}
+        onClose={() => setSheet(null)}
+        title="Schedule Meeting"
+        fullHeight
+      >
+        {lead ? (
+          <MeetingForm
+            mode="schedule"
+            leadId={lead._id}
+            lead={lead}
+            onSuccess={async () => {
+              setSheet(null);
+              await load();
+            }}
+            onToast={flash}
+          />
+        ) : null}
+      </Sheet>
+
+      {/* Reschedule Meeting Sheet */}
+      <Sheet
+        visible={sheet === "reschedule"}
+        onClose={() => setSheet(null)}
+        title="Reschedule Meeting"
+      >
+        {lead && selectedMeeting ? (
+          <MeetingForm
+            mode="reschedule"
+            leadId={lead._id}
+            lead={lead}
+            meetingToReschedule={selectedMeeting}
+            onSuccess={async () => {
+              setSheet(null);
+              await load();
+            }}
+            onToast={flash}
+          />
+        ) : null}
+      </Sheet>
+
+      {/* Cancel Meeting Sheet */}
+      <Sheet
+        visible={sheet === "cancel"}
+        onClose={() => setSheet(null)}
+        title="Cancel Meeting"
+      >
+        <AppText variant="caption" color="textMuted">
+          The Google Meet event will be removed and invitees will get a cancellation email. This cannot be undone.
+        </AppText>
+        <Field
+          label="Reason (optional)"
+          placeholder="Why is this meeting cancelled?"
+          value={cancelReason}
+          onChangeText={setCancelReason}
+          maxLength={500}
+        />
+        {sheetError ? (
+          <AppText variant="label" color="danger">
+            {sheetError}
+          </AppText>
+        ) : null}
+        <Button
+          label={saving ? "Cancelling…" : "Cancel meeting"}
+          variant="danger"
+          loading={saving}
+          onPress={() =>
+            run(
+              () => cancelMeeting(selectedMeeting!._id, cancelReason.trim() || undefined),
+              "Meeting cancelled",
+            )
+          }
+        />
+      </Sheet>
+
+      {/* Mark Not Happened Sheet */}
+      <Sheet
+        visible={sheet === "notHappened"}
+        onClose={() => setSheet(null)}
+        title="Mark Not Happened"
+      >
+        <AppText variant="caption" color="textMuted">
+          A reason is required to mark a meeting as not happened.
+        </AppText>
+        <Field
+          label="Reason"
+          placeholder="e.g. Lead did not show up, asked to postpone"
+          value={notHappenedNote}
+          onChangeText={setNotHappenedNote}
+          maxLength={1000}
+        />
+        {sheetError ? (
+          <AppText variant="label" color="danger">
+            {sheetError}
+          </AppText>
+        ) : null}
+        <Button
+          label={saving ? "Saving…" : "Mark not happened"}
+          variant="danger"
+          loading={saving}
+          disabled={notHappenedNote.trim().length < 2}
+          onPress={() =>
+            run(
+              () =>
+                markMeetingStatus(selectedMeeting!._id, {
+                  status: "NOT_HAPPENED",
+                  note: notHappenedNote.trim(),
+                }),
+              "Meeting marked as not happened",
+            )
+          }
+        />
       </Sheet>
     </SafeAreaView>
   );

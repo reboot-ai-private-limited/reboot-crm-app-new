@@ -9,6 +9,7 @@ import { Card, FilterChips, GradientCard, IconBadge, Row, SectionHeader } from '
 import { rupees } from '@/lib/customers';
 import { countAllLeads, fetchFollowUps, Lead } from '@/lib/leads';
 import { DashboardRow, fetchDashboardRows, fetchMonthRows, Range, RANGES, rangeDates } from '@/lib/reporting';
+import { fetchMeetings } from '@/lib/meetings';
 import { useAuth } from '@/store/auth';
 import { colors } from '@/theme';
 
@@ -62,6 +63,7 @@ const cells = (r: DashboardRow): Record<(typeof COLS)[number]['key'], string> =>
 
 type Data = {
   inMeeting: number;
+  meetingsToday: number;
   followUps: Lead[];
   /** Activity for the selected period. */
   period: DashboardRow[];
@@ -105,12 +107,17 @@ export default function Dashboard() {
     const { start, end, targetMonth } = rangeDates(r);
     // "This month" and "Last month" periods already carry their month's targets; rolling ranges use this month.
     const needMonth = r === 'Today' || r === 'Last 7 days' || r === 'Last 30 days';
+    const now = new Date();
+    const startOfTodayIso = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString();
+    const endOfTodayIso = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
+
     // Each block loads on its own, so one failing API doesn't blank the whole screen.
-    const [meeting, followUps, period, month] = await Promise.allSettled([
+    const [meeting, followUps, period, month, meetsToday] = await Promise.allSettled([
       countAllLeads('MEETING'),
       fetchFollowUps(true),
       fetchDashboardRows(start, end),
       needMonth ? fetchMonthRows() : Promise.resolve(null),
+      fetchMeetings({ from: startOfTodayIso, to: endOfTodayIso }),
     ]);
     if (rangeRef.current !== r) return; // the user picked another period meanwhile
     const next: Partial<Data> = {};
@@ -121,8 +128,9 @@ export default function Dashboard() {
       if (targetMonth === 'last' || !needMonth) next.month = period.value;
     }
     if (month.status === 'fulfilled' && month.value) next.month = month.value;
+    if (meetsToday.status === 'fulfilled') next.meetingsToday = meetsToday.value.length;
     setData((prev) => ({ ...prev, ...next }));
-    const failed = [meeting, followUps, period, month].find((x) => x.status === 'rejected') as PromiseRejectedResult | undefined;
+    const failed = [meeting, followUps, period, month, meetsToday].find((x) => x.status === 'rejected') as PromiseRejectedResult | undefined;
     setError(failed ? (failed.reason as Error).message : '');
     setLoaded(true);
     setRefreshing(false);
@@ -242,6 +250,9 @@ export default function Dashboard() {
               <View style={styles.grid}>
                 <Stat label="In meeting" value={data.inMeeting ?? '–'} icon="calendar" tone="warning" onPress={() => router.push('/leads')} />
                 <Stat label="Deals closed" value={data.period ? sum(periodRows, 'dealsClosed') : '–'} icon="check" tone="success" onPress={() => router.push('/leads')} />
+              </View>
+              <View style={styles.grid}>
+                <Stat label="Meetings today" value={data.meetingsToday ?? '–'} icon="video" tone="warning" onPress={() => router.push('/meetings')} />
               </View>
             </View>
 

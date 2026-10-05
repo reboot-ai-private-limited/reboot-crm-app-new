@@ -9,6 +9,7 @@ import { Avatar, Card, GradientCard, IconBadge, IconButton, Row, SectionHeader }
 import { rupees } from '@/lib/customers';
 import { countMyLeads, fetchFollowUps, Lead } from '@/lib/leads';
 import { DashboardRow, fetchMyMonth } from '@/lib/reporting';
+import { fetchMeetings, Meeting, meetingStatusLabel, meetingStatusTone } from '@/lib/meetings';
 import { useAuth } from '@/store/auth';
 import { ColorName, colors } from '@/theme';
 
@@ -60,6 +61,33 @@ function Stat({ label, value, icon, tone, onPress }: { label: string; value: num
   );
 }
 
+function MeetingHomeRow({ meeting, onPress }: { meeting: Meeting; onPress: () => void }) {
+  const [fg, bg] = meetingStatusTone(meeting.status);
+  const start = new Date(meeting.startAt);
+  const timeStr = start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const leadTitle = meeting.lead?.companyName || meeting.lead?.contactName || 'Lead';
+  return (
+    <Card onPress={onPress}>
+      <Row>
+        <IconBadge icon="video" tone="warning" />
+        <View style={{ flex: 1, gap: 2 }}>
+          <AppText variant="section" numberOfLines={1}>
+            {meeting.title}
+          </AppText>
+          <AppText variant="label" color="textMuted" weight="400" numberOfLines={1}>
+            {leadTitle} · {timeStr} ({meeting.durationMin}m)
+          </AppText>
+        </View>
+        <View style={[styles.badge, { backgroundColor: colors[bg] }]}>
+          <AppText variant="caption" weight="600" color={fg} style={{ textTransform: 'uppercase' }}>
+            {meetingStatusLabel(meeting.status)}
+          </AppText>
+        </View>
+      </Row>
+    </Card>
+  );
+}
+
 function FollowUpRow({ lead, overdue, onPress }: { lead: Lead; overdue: boolean; onPress: () => void }) {
   const tone: ColorName = overdue ? 'danger' : 'warning';
   const action = lead.nextActionNote?.trim() || 'Follow-up';
@@ -91,6 +119,7 @@ export default function Home() {
   const router = useRouter();
   const [counts, setCounts] = useState<Counts | null>(null);
   const [followUps, setFollowUps] = useState<Lead[]>([]);
+  const [todayMeetings, setTodayMeetings] = useState<Meeting[]>([]);
   const [month, setMonth] = useState<DashboardRow | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -100,16 +129,22 @@ export default function Home() {
     async (refresh = false) => {
       if (isAdmin || !session) return;
       if (refresh) setRefreshing(true);
+      const now = new Date();
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString();
+      const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
+
       // Each block loads on its own, so one failing API doesn't blank the whole screen.
-      const [c, f, m] = await Promise.allSettled([
+      const [c, f, m, meets] = await Promise.allSettled([
         Promise.all([countMyLeads(), countMyLeads('PROPOSAL'), countMyLeads('DEAL_CLOSED')]),
         fetchFollowUps(false),
         fetchMyMonth(session.mobile),
+        fetchMeetings({ mine: true, from: startOfDay, to: endOfDay }),
       ]);
       if (c.status === 'fulfilled') setCounts({ leads: c.value[0], proposals: c.value[1], deals: c.value[2] });
       if (f.status === 'fulfilled') setFollowUps(f.value);
       if (m.status === 'fulfilled') setMonth(m.value);
-      const failed = [c, f, m].find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
+      if (meets.status === 'fulfilled') setTodayMeetings(meets.value);
+      const failed = [c, f, m, meets].find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
       setError(failed ? (failed.reason as Error).message : '');
       setLoaded(true);
       setRefreshing(false);
@@ -201,6 +236,32 @@ export default function Home() {
               <Stat label="Proposals" value={counts?.proposals ?? '–'} icon="file" tone="purple" onPress={() => router.push('/leads')} />
               <Stat label="Deals" value={counts?.deals ?? '–'} icon="check" tone="success" onPress={() => router.push('/leads')} />
             </View>
+
+            {/* Today's meetings */}
+            <SectionHeader title="Today's meetings" link="See all" onPress={() => router.push('/meetings')} />
+            {todayMeetings.length === 0 ? (
+              <Card>
+                <Row>
+                  <Icon name="check" size={18} color="success" />
+                  <AppText color="textMuted">No meetings scheduled for today.</AppText>
+                </Row>
+              </Card>
+            ) : (
+              <>
+                {todayMeetings.slice(0, 3).map((m) => (
+                  <MeetingHomeRow
+                    key={m._id}
+                    meeting={m}
+                    onPress={() => router.push({ pathname: '/lead/[id]', params: { id: m.leadId } })}
+                  />
+                ))}
+                {todayMeetings.length > 3 ? (
+                  <AppText variant="label" color="primary" align="center" onPress={() => router.push('/meetings')}>
+                    +{todayMeetings.length - 3} more
+                  </AppText>
+                ) : null}
+              </>
+            )}
 
             {/* Follow-ups due today or overdue */}
             <SectionHeader title="Today's follow-ups" link="See all" onPress={() => router.push('/followups')} />
