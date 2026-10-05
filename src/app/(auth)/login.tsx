@@ -33,14 +33,19 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen>
+      <Screen scroll={false}>
         <View style={styles.wrap}>
           <Image source={logo} style={styles.logo} contentFit="cover" />
-          <View style={{ gap: 8 }}>
-            <AppText variant="title">Welcome back</AppText>
-            <AppText color="textMuted">Enter your mobile number. We will send a 6-digit OTP on WhatsApp.</AppText>
+          <View style={{ gap: 8, alignItems: 'center' }}>
+            <AppText variant="title" align="center">
+              Welcome back
+            </AppText>
+            <AppText color="textMuted" align="center">
+              Enter your mobile number. We will send a 6-digit OTP on WhatsApp.
+            </AppText>
           </View>
           <Field
+            large
             label="Mobile number"
             required
             icon="phone"
@@ -66,6 +71,6 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  wrap: { paddingTop: 40, gap: 20 },
-  logo: { width: 64, height: 64, borderRadius: 18 },
+  wrap: { flex: 1, justifyContent: 'center', gap: 24, paddingBottom: 48 },
+  logo: { width: 76, height: 76, borderRadius: 22, alignSelf: 'center' },
 });

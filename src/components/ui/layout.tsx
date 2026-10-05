@@ -198,6 +198,7 @@ export function Field({
   flex,
   error,
   autoCapitalize,
+  large,
 }: {
   label?: string;
   value: string;
@@ -212,6 +213,8 @@ export function Field({
   flex?: boolean;
   error?: string;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  /** Taller input (60dp) for focal forms such as login. */
+  large?: boolean;
 }) {
   return (
     <View style={[{ gap: 6 }, flex ? { flex: 1 } : null]}>
@@ -221,7 +224,7 @@ export function Field({
           {required ? ' *' : ''}
         </AppText>
       ) : null}
-      <View style={[styles.field, multiline && { height: 120, alignItems: 'flex-start' }, error ? { borderColor: colors.danger } : null]}>
+      <View style={[styles.field, large && { height: 60 }, multiline && { height: 120, alignItems: 'flex-start' }, error ? { borderColor: colors.danger } : null]}>
         {icon ? <Icon name={icon} size={18} color="textSubtle" /> : null}
         <TextInput
           value={value}
