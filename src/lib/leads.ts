@@ -15,6 +15,8 @@ export type Lead = {
   email?: string;
   city?: string;
   address?: string;
+  /** Full URL, or empty / missing when the business has no website. */
+  website?: string;
   category?: string;
   source?: string;
   status: LeadStatus;
@@ -157,6 +159,7 @@ export type LeadInput = {
   city: string;
   category: string;
   address?: string;
+  website?: string;
 };
 
 // Empty optional strings must be omitted: the backend validates email/mobile format when present.
@@ -178,7 +181,8 @@ export async function createLead(input: LeadInput) {
 // No GPS on the calls below — the backend no longer needs it and the business rule says not to capture it.
 
 export function updateLead(id: string, input: LeadInput) {
-  return api<{ lead: Lead }>(`/leads/${id}`, { method: 'PATCH', body: clean(input) });
+  // clean() drops empty strings, but an empty website must be sent so a removed website is cleared.
+  return api<{ lead: Lead }>(`/leads/${id}`, { method: 'PATCH', body: { ...clean(input), website: (input.website ?? '').trim() } });
 }
 
 export function addNote(id: string, note: string) {

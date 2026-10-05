@@ -106,6 +106,8 @@ export default function LeadsScreen() {
   const [statusSel, setStatusSel] = useState<string[]>([]);
   const [prioritySel, setPrioritySel] = useState<string[]>([]);
   const [citySel, setCitySel] = useState<string[]>([]);
+  // 'yes' = has a website, 'no' = none. Ticking both is the same as no filter.
+  const [websiteSel, setWebsiteSel] = useState<string[]>([]);
   // Admin → All leads only: show the leads of the selected users.
   const [userSel, setUserSel] = useState<string[]>([]);
   // Admin: My leads (assigned to the admin), All leads (everyone's), Pool. Employees: My leads, Pool.
@@ -188,6 +190,13 @@ export default function LeadsScreen() {
   const statusOptions = useMemo(() => optionsFrom(allLeads.map((l) => l.status), statusLabel, LEAD_STATUSES), [allLeads]);
   const priorityOptions = useMemo(() => optionsFrom(allLeads.map((l) => l.priority), (v) => v, PRIORITIES), [allLeads]);
   const cityOptions = useMemo(() => optionsFrom(allLeads.map((l) => l.city?.trim().toLowerCase()), titleCase), [allLeads]);
+  const websiteOptions = useMemo<FilterOption[]>(() => {
+    const withSite = allLeads.filter((l) => !!l.website).length;
+    return [
+      { value: 'yes', label: 'Has website', count: withSite },
+      { value: 'no', label: 'No website', count: allLeads.length - withSite },
+    ];
+  }, [allLeads]);
   const userOptions = useMemo(() => {
     const names = new Map<string, string>();
     for (const l of allLeads) {
@@ -208,12 +217,13 @@ export default function LeadsScreen() {
           (statusSel.length === 0 || statusSel.includes(l.status)) &&
           (prioritySel.length === 0 || (!!l.priority && prioritySel.includes(l.priority))) &&
           (citySel.length === 0 || citySel.includes(l.city?.trim().toLowerCase() ?? '')) &&
+          (websiteSel.length === 0 || websiteSel.includes(l.website ? 'yes' : 'no')) &&
           (activeUserSel.length === 0 || activeUserSel.includes(ownerOf(l)?.id ?? '')),
       ),
-    [allLeads, statusSel, prioritySel, citySel, activeUserSel],
+    [allLeads, statusSel, prioritySel, citySel, websiteSel, activeUserSel],
   );
   const total = leads.length;
-  const filtering = statusSel.length + prioritySel.length + citySel.length + activeUserSel.length > 0;
+  const filtering = statusSel.length + prioritySel.length + citySel.length + websiteSel.length + activeUserSel.length > 0;
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -221,12 +231,13 @@ export default function LeadsScreen() {
       <View style={styles.controls}>
         <FilterChips items={scopes} value={scope} onChange={setScope} />
         <Field icon="search" placeholder="Search name, company or phone" value={search} onChangeText={setSearch} />
-        {/* Swipe sideways when the buttons don't fit the screen. */}
+        {/* One row, side by side. Compact buttons so Status, Priority, City and Website fit; swipe sideways for more (User). */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-          <MultiSelectFilter label="Status" options={statusOptions} selected={statusSel} onChange={setStatusSel} />
-          <MultiSelectFilter label="Priority" options={priorityOptions} selected={prioritySel} onChange={setPrioritySel} />
-          <MultiSelectFilter label="City" options={cityOptions} selected={citySel} onChange={setCitySel} />
-          {allScope ? <MultiSelectFilter label="User" options={userOptions} selected={userSel} onChange={setUserSel} /> : null}
+          <MultiSelectFilter compact label="Status" options={statusOptions} selected={statusSel} onChange={setStatusSel} />
+          <MultiSelectFilter compact label="Priority" options={priorityOptions} selected={prioritySel} onChange={setPrioritySel} />
+          <MultiSelectFilter compact label="City" options={cityOptions} selected={citySel} onChange={setCitySel} />
+          <MultiSelectFilter compact label="Website" options={websiteOptions} selected={websiteSel} onChange={setWebsiteSel} />
+          {allScope ? <MultiSelectFilter compact label="User" options={userOptions} selected={userSel} onChange={setUserSel} /> : null}
         </ScrollView>
       </View>
 
@@ -264,8 +275,7 @@ export default function LeadsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  controls: { paddingHorizontal: 20, gap: 12, paddingBottom: 12 },
-  fab: { position: 'absolute', right: 20, bottom: 20, width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, elevation: 4, shadowColor: '#0F172A', shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
+  controls: { paddingHorizontal: 20, gap: 12, paddingBottom: 12 },  fab: { position: 'absolute', right: 20, bottom: 20, width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, elevation: 4, shadowColor: '#0F172A', shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
   list: { paddingHorizontal: 20, paddingBottom: 96, gap: 12, flexGrow: 1 },
   call: { padding: 9, borderRadius: 10, backgroundColor: colors.successSoft },
   chip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },

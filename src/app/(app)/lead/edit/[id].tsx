@@ -43,6 +43,7 @@ export default function EditLead() {
         city: cityFromDb(lead.city),
         category: lead.category ?? '',
         address: lead.address ?? '',
+        website: lead.website ?? '',
       }}
       onSubmit={async (v) => {
         await updateLead(id, v);

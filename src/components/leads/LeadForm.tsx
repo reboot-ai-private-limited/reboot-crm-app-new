@@ -12,6 +12,7 @@ import { CATEGORIES } from '@/constants/categories';
 import { CITIES } from '@/constants/cities';
 import { ApiError } from '@/lib/api';
 import { LeadInput, statusLabel } from '@/lib/leads';
+import { isValidWebsite } from '@/lib/website';
 import { colors } from '@/theme';
 
 type Errors = Partial<Record<keyof LeadInput, string>>;
@@ -30,6 +31,7 @@ function validate(v: LeadInput): Errors {
   if (!mobile && !email) e.mobile = 'Enter a mobile number or an email';
   if (!v.city) e.city = 'Select a city';
   if (!v.category) e.category = 'Select a category';
+  if (!isValidWebsite(v.website ?? '')) e.website = 'Enter a valid website, e.g. example.com';
   return e;
 }
 
@@ -109,6 +111,7 @@ export function LeadForm({
           <SelectField label="City" required icon="pin" value={v.city} options={CITIES} onChange={set('city')} error={errors.city} />
           <SelectField label="Category" required icon="briefcase" value={v.category} options={CATEGORIES} onChange={set('category')} error={errors.category} />
           <Field label="Address" placeholder="Street, area (optional)" value={v.address ?? ''} onChangeText={set('address')} />
+          <Field label="Website" icon="globe" placeholder="example.com (optional)" value={v.website ?? ''} onChangeText={set('website')} keyboardType="default" autoCapitalize="none" error={errors.website} />
 
           {duplicate ? (
             <View style={styles.duplicate}>

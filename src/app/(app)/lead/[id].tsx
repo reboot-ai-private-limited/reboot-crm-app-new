@@ -35,6 +35,7 @@ import { DealCloseForm } from "@/components/leads/DealCloseForm";
 import { MeetingCard } from "@/components/meetings/MeetingCard";
 import { MeetingForm } from "@/components/meetings/MeetingForm";
 import { dealError, DealForm, dealPayload, newDealForm } from "@/lib/deal";
+import { websiteLabel } from "@/lib/website";
 import {
   Activity,
   addNote,
@@ -133,13 +134,19 @@ function InfoRow({
   icon,
   label,
   value,
+  onPress,
+  muted,
 }: {
   icon: IconName;
   label: string;
   value?: string | null;
+  /** Makes the value a tappable link. */
+  onPress?: () => void;
+  /** Greyed value, for "nothing here" such as No website. */
+  muted?: boolean;
 }) {
   if (!value) return null;
-  return (
+  const row = (
     <Row style={styles.infoRow}>
       <Icon name={icon} size={18} color="textSubtle" />
       <AppText
@@ -152,11 +159,20 @@ function InfoRow({
       </AppText>
       <AppText
         weight="500"
+        color={onPress ? "primary" : muted ? "textSubtle" : "text"}
+        numberOfLines={1}
         style={{ flex: 1, fontSize: 14, textAlign: "right" }}
       >
         {value}
       </AppText>
     </Row>
+  );
+  return onPress ? (
+    <Pressable onPress={onPress} accessibilityRole="link">
+      {row}
+    </Pressable>
+  ) : (
+    row
   );
 }
 
@@ -550,6 +566,13 @@ export default function LeadDetails() {
           <InfoRow icon="mail" label="Email" value={lead.email} />
           <InfoRow icon="pin" label="City" value={titleCase(lead.city)} />
           <InfoRow icon="home" label="Address" value={lead.address} />
+          <InfoRow
+            icon="globe"
+            label="Website"
+            value={lead.website ? websiteLabel(lead.website) : "No website"}
+            muted={!lead.website}
+            onPress={lead.website ? () => Linking.openURL(lead.website!) : undefined}
+          />
           <InfoRow
             icon="user"
             label="Assigned to"

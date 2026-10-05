@@ -19,11 +19,14 @@ export function MultiSelectFilter({
   options,
   selected,
   onChange,
+  compact,
 }: {
   label: string;
   options: FilterOption[];
   selected: string[];
   onChange: (v: string[]) => void;
+  /** Narrower button so several filters fit side by side on one row. */
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -42,7 +45,7 @@ export function MultiSelectFilter({
 
   return (
     <>
-      <Pressable onPress={() => setOpen(true)} style={[styles.box, on && styles.boxOn]}>
+      <Pressable onPress={() => setOpen(true)} style={[styles.box, compact && styles.boxCompact, on && styles.boxOn]}>
         <AppText variant="label" weight={on ? '600' : '400'} color={on ? 'primary' : 'textMuted'} numberOfLines={1} style={{ flexShrink: 1 }}>
           {label}
           {on ? ` · ${selected.length}` : ''}
@@ -91,6 +94,7 @@ export function MultiSelectFilter({
 
 const styles = StyleSheet.create({
   box: { minWidth: 104, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md },
+  boxCompact: { minWidth: 0, gap: 4, paddingHorizontal: 12 },
   boxOn: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   option: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 },
   sep: { height: 1, backgroundColor: colors.border },
