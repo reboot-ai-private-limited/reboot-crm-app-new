@@ -222,6 +222,8 @@ export function MeetingCard({
 }: Props) {
   const [showParticipants, setShowParticipants] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  // Open meetings start expanded; finished and cancelled ones start collapsed so a long list stays short.
+  const [expanded, setExpanded] = useState(() => isActiveMeeting(meeting.status));
 
   const active = isActiveMeeting(meeting.status);
   const [now] = useState(() => Date.now());
@@ -256,8 +258,14 @@ export function MeetingCard({
 
   return (
     <Card style={meeting.status === 'CANCELLED' ? { ...styles.card, ...styles.cancelledCard } : styles.card}>
-      {/* Header */}
-      <View style={styles.headerRow}>
+      {/* Header: tap to expand or collapse the card */}
+      <Pressable
+        onPress={() => setExpanded((v) => !v)}
+        style={styles.headerRow}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityLabel={expanded ? 'Collapse meeting' : 'Expand meeting'}
+      >
         <View style={{ flex: 1, gap: 2 }}>
           <AppText weight="700" numberOfLines={1}>
             {meeting.title}
@@ -268,8 +276,11 @@ export function MeetingCard({
           </AppText>
         </View>
         <StatusPill status={meeting.status} />
-      </View>
+        <Icon name={expanded ? 'chevD' : 'chevR'} size={18} color="textMuted" />
+      </Pressable>
 
+      {expanded ? (
+        <>
       {/* Meet link & Join */}
       {meeting.status !== 'CANCELLED' && meeting.meetLink ? (
         <View style={styles.linkRow}>
@@ -530,6 +541,8 @@ export function MeetingCard({
             })
           )}
         </View>
+      ) : null}
+        </>
       ) : null}
     </Card>
   );
