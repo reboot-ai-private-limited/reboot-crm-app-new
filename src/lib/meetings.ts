@@ -8,7 +8,7 @@ export const MEETING_STATUS_LABEL: Record<MeetingStatus, string> = {
   SCHEDULED: 'Scheduled',
   IN_PROGRESS: 'In progress',
   DONE: 'Done',
-  NOT_HAPPENED: 'Not happened',
+  NOT_HAPPENED: 'Not attend',
   CANCELLED: 'Cancelled',
 };
 

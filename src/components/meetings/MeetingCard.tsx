@@ -399,7 +399,7 @@ export function MeetingCard({
           >
             {suggestion === 'DONE'
               ? 'Someone from outside joined. Mark this meeting as done?'
-              : 'Nobody from outside joined. Mark this meeting as not happened?'}
+              : 'Nobody from outside joined. Mark this meeting as Not attend?'}
           </AppText>
         </View>
       ) : null}
@@ -417,7 +417,7 @@ export function MeetingCard({
         ) : null}
         {canModify && canMark && meeting.status !== 'NOT_HAPPENED' ? (
           <Button
-            label="Not happened"
+            label="Not attend"
             variant={suggestion === 'NOT_HAPPENED' ? 'danger' : 'outline'}
             icon="x"
             small

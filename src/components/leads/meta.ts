@@ -39,7 +39,7 @@ const EVENT: Record<string, { label: string; icon: IconName; tone: ColorName }> 
   MEETING_RESCHEDULED: { label: 'Meeting rescheduled', icon: 'clock', tone: 'warning' },
   MEETING_CANCELLED: { label: 'Meeting cancelled', icon: 'x', tone: 'slate' },
   MEETING_DONE: { label: 'Meeting completed', icon: 'check', tone: 'success' },
-  MEETING_NOT_HAPPENED: { label: 'Meeting not happened', icon: 'alert', tone: 'danger' },
+  MEETING_NOT_HAPPENED: { label: 'Meeting Not attend', icon: 'alert', tone: 'danger' },
 };
 
 export function eventMeta(type: string) {

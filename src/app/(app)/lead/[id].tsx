@@ -1111,10 +1111,10 @@ export default function LeadDetails() {
       <Sheet
         visible={sheet === "notHappened"}
         onClose={() => setSheet(null)}
-        title="Mark Not Happened"
+        title="Mark Not Attend"
       >
         <AppText variant="caption" color="textMuted">
-          A reason is required to mark a meeting as not happened.
+          A reason is required to mark a meeting as Not attend.
         </AppText>
         <Field
           label="Reason"
@@ -1129,7 +1129,7 @@ export default function LeadDetails() {
           </AppText>
         ) : null}
         <Button
-          label={saving ? "Saving…" : "Mark not happened"}
+          label={saving ? "Saving…" : "Mark Not attend"}
           variant="danger"
           loading={saving}
           disabled={notHappenedNote.trim().length < 2}
@@ -1140,7 +1140,7 @@ export default function LeadDetails() {
                   status: "NOT_HAPPENED",
                   note: notHappenedNote.trim(),
                 }),
-              "Meeting marked as not happened",
+              "Meeting marked as Not attend",
             )
           }
         />
