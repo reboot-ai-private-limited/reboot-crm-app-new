@@ -72,6 +72,7 @@ type SheetKind =
   | "meeting"
   | "reschedule"
   | "cancel"
+  | "markDone"
   | "notHappened"
   | null;
 
@@ -679,10 +680,9 @@ export default function LeadDetails() {
                     setSheet("cancel");
                   }}
                   onMarkDone={(targetMeeting) => {
-                    run(
-                      () => markMeetingStatus(targetMeeting._id, { status: "DONE" }),
-                      "Meeting marked as done",
-                    );
+                    setSelectedMeeting(targetMeeting);
+                    setSheetError("");
+                    setSheet("markDone");
                   }}
                   onNotHappened={(targetMeeting) => {
                     setSelectedMeeting(targetMeeting);
@@ -1075,6 +1075,36 @@ export default function LeadDetails() {
             )
           }
         />
+      </Sheet>
+
+      {/* Mark Done Sheet: asks first, because one tap used to save the outcome */}
+      <Sheet
+        visible={sheet === "markDone"}
+        onClose={() => setSheet(null)}
+        title="Mark Meeting Done"
+      >
+        <AppText variant="caption" color="textMuted">
+          {selectedMeeting
+            ? `Mark "${selectedMeeting.title}" as done? Only an admin can change it afterwards.`
+            : "Mark this meeting as done? Only an admin can change it afterwards."}
+        </AppText>
+        {sheetError ? (
+          <AppText variant="label" color="danger">
+            {sheetError}
+          </AppText>
+        ) : null}
+        <Button
+          label={saving ? "Saving…" : "Yes, mark done"}
+          variant="success"
+          loading={saving}
+          onPress={() =>
+            run(
+              () => markMeetingStatus(selectedMeeting!._id, { status: "DONE" }),
+              "Meeting marked as done",
+            )
+          }
+        />
+        <Button label="Go back" variant="outline" disabled={saving} onPress={() => setSheet(null)} />
       </Sheet>
 
       {/* Mark Not Happened Sheet */}
