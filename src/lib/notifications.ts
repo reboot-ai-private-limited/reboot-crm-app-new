@@ -76,7 +76,7 @@ export function setUnreadCount(n: number) {
 
 const POLL_MS = 30_000;
 
-/** Unread notifications, kept fresh while the app is open. Pass enabled=false (e.g. for Admin) to do nothing. */
+/** Unread notifications, kept fresh while the app is open. Pass enabled=false to do nothing. */
 export function useUnreadCount(enabled: boolean) {
   const [count, setCount] = useState(unreadCount);
 

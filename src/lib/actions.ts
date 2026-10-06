@@ -4,13 +4,15 @@ import { ColorName } from '@/theme';
 import { api } from './api';
 import { rupees } from './customers';
 import { fetchFollowUps, Lead, LeadPage } from './leads';
+import { fetchMeetings, hostName } from './meetings';
+import { fetchNotifications, timeAgo } from './notifications';
 import { DashboardRow, fetchDashboardRows, ROLE_LABEL } from './reporting';
 
 /**
  * Admin "Action required": exceptions worked out in the app from existing APIs
  * (the planned /exceptions endpoint does not exist yet).
  */
-export const ACTION_KINDS = ['followups', 'hot', 'pool', 'proposals', 'invoices', 'inactive'] as const;
+export const ACTION_KINDS = ['alerts', 'followups', 'meetings', 'hot', 'pool', 'proposals', 'invoices', 'inactive'] as const;
 export type ActionKind = (typeof ACTION_KINDS)[number];
 
 /** A proposal with no progress for this many days is flagged. */
@@ -19,7 +21,9 @@ export const PROPOSAL_WAIT_DAYS = 3;
 export const INACTIVE_DAYS = 3;
 
 export const ACTION_INFO: Record<ActionKind, { title: string; hint: string; icon: IconName; tone: 'danger' | 'warning' | 'primary' | 'purple' }> = {
+  alerts: { title: 'Unread alerts', hint: 'New notifications for you', icon: 'bell', tone: 'primary' },
   followups: { title: 'Overdue follow-ups', hint: 'Follow-up date has passed', icon: 'clock', tone: 'danger' },
+  meetings: { title: 'Meetings need an outcome', hint: 'Ended, but not marked Done or Not attend', icon: 'calendar', tone: 'warning' },
   hot: { title: 'HOT leads not contacted', hint: 'High-priority leads still Fresh', icon: 'zap', tone: 'danger' },
   invoices: { title: 'Overdue invoices', hint: 'Past due date with balance unpaid', icon: 'rupee', tone: 'danger' },
   pool: { title: 'Unassigned leads', hint: 'Waiting in the lead pool', icon: 'userx', tone: 'warning' },
@@ -28,11 +32,7 @@ export const ACTION_INFO: Record<ActionKind, { title: string; hint: string; icon
 };
 
 /** Shown greyed out until their backend exists. */
-export const COMING_SOON: { title: string; icon: IconName }[] = [
-  { title: 'Meeting outcome pending / no-show', icon: 'calendar' },
-  { title: 'Renewals approaching', icon: 'refresh' },
-  { title: 'Failed automations', icon: 'alert' },
-];
+export const COMING_SOON: { title: string; icon: IconName }[] = [{ title: 'Renewals approaching', icon: 'refresh' }];
 
 export type ActionItem = {
   id: string;
@@ -74,6 +74,46 @@ async function overdueFollowUps(): Promise<ActionResult> {
         target: leadTarget(l),
       };
     });
+  return { items, total: items.length };
+}
+
+/** The Admin's own unread notifications (the newest page; `total` is how many are unread). Tap one to open its lead. */
+async function unreadAlerts(): Promise<ActionResult> {
+  const res = await fetchNotifications({ unread: true });
+  const items = res.data
+    .filter((n) => n.leadId?._id)
+    .map((n) => ({
+      id: n._id,
+      title: n.title,
+      subtitle: n.body ?? '',
+      meta: timeAgo(n.createdAt),
+      metaTone: (n.priority === 'HIGH' ? 'danger' : 'textMuted') as ColorName,
+      target: { pathname: '/lead/[id]' as const, params: { id: n.leadId!._id } },
+    }));
+  return { items, total: res.unread };
+}
+
+/** "45 min", "3 h" or "2 days": how long ago a meeting ended. */
+const sinceEnd = (endIso: string) => {
+  const mins = Math.max(0, Math.round((Date.now() - new Date(endIso).getTime()) / 60_000));
+  return mins < 60 ? `${mins} min` : mins < 24 * 60 ? `${Math.round(mins / 60)} h` : late(Math.floor(mins / (24 * 60)));
+};
+
+/** Meetings (any host) whose end time has passed while they are still Scheduled or In progress: nobody has marked the outcome. */
+async function meetingsNeedingOutcome(): Promise<ActionResult> {
+  const now = Date.now();
+  const meetings = await fetchMeetings({ status: 'SCHEDULED,IN_PROGRESS', to: new Date(now).toISOString(), limit: 200 });
+  const items = meetings
+    .filter((m) => new Date(m.endAt).getTime() < now)
+    .sort((a, b) => new Date(a.endAt).getTime() - new Date(b.endAt).getTime())
+    .map((m) => ({
+      id: m._id,
+      title: m.lead?.companyName || m.lead?.contactName || m.title,
+      subtitle: [hostName(m), new Date(m.startAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })].filter(Boolean).join(' · '),
+      meta: `${sinceEnd(m.endAt)} ago`,
+      metaTone: 'warning' as ColorName,
+      target: { pathname: '/lead/[id]' as const, params: { id: m.leadId } },
+    }));
   return { items, total: items.length };
 }
 
@@ -173,7 +213,9 @@ async function inactiveEmployees(): Promise<ActionResult> {
 }
 
 export const ACTION_LOADERS: Record<ActionKind, () => Promise<ActionResult>> = {
+  alerts: unreadAlerts,
   followups: overdueFollowUps,
+  meetings: meetingsNeedingOutcome,
   hot: hotUncontacted,
   pool: poolLeads,
   proposals: staleProposals,

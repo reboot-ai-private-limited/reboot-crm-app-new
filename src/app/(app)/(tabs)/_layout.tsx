@@ -17,13 +17,14 @@ const hidden = { tabBarItemStyle: { display: 'none' as const }, tabBarButton: ()
 
 // One app, tabs by role:
 //   Employee: Home · Leads · Meetings · Alerts · Profile
-//   Admin:    Dashboard · Leads · Team · Action · Profile
+//   Admin:    Dashboard · Leads · Team · Action · Profile   (Admin alerts are a card on the Action tab)
 export default function TabsLayout() {
   const { isAdmin } = useAuth();
   const emp = isAdmin ? hidden : {};
   const adm = isAdmin ? {} : hidden;
-  // Number on the Alerts tab. Employees only (Admin has no Alerts tab).
-  const unread = useUnreadCount(!isAdmin);
+  // Unread alerts: the number on the Alerts tab (employees) or on the Action tab (Admin).
+  const unread = useUnreadCount(true);
+  const unreadBadge = unread > 0 ? (unread > 99 ? '99+' : unread) : undefined;
 
   return (
     <Tabs
@@ -42,8 +43,8 @@ export default function TabsLayout() {
       <Tabs.Screen name="leads" options={{ title: 'Leads', tabBarIcon: tab('users') }} />
       <Tabs.Screen name="meetings" options={{ title: 'Meetings', tabBarIcon: tab('calendar'), ...emp }} />
       <Tabs.Screen name="team" options={{ title: 'Team', tabBarIcon: tab('target'), ...adm }} />
-      <Tabs.Screen name="alerts" options={{ title: 'Alerts', tabBarIcon: tab('bell'), tabBarBadge: unread > 0 ? (unread > 99 ? '99+' : unread) : undefined, ...emp }} />
-      <Tabs.Screen name="actions" options={{ title: 'Action', tabBarIcon: tab('alert'), ...adm }} />
+      <Tabs.Screen name="actions" options={{ title: 'Action', tabBarIcon: tab('alert'), tabBarBadge: isAdmin ? unreadBadge : undefined, ...adm }} />
+      <Tabs.Screen name="alerts" options={{ title: 'Alerts', tabBarIcon: tab('bell'), tabBarBadge: unreadBadge, ...emp }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: tab('user') }} />
     </Tabs>
   );
