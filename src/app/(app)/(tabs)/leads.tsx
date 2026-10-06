@@ -4,12 +4,15 @@ import { ActivityIndicator, FlatList, Linking, Pressable, RefreshControl, Scroll
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
+import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { Avatar, Card, Field, FilterChips, Header, IconButton, Row } from '@/components/ui/layout';
 import { FilterOption, MultiSelectFilter } from '@/components/ui/MultiSelectFilter';
+import { Sheet } from '@/components/ui/Sheet';
 import { PRIORITY_TONE, statusTone } from '@/components/leads/meta';
-import { fetchAllLeads, Lead, LEAD_STATUSES, statusLabel, titleCase } from '@/lib/leads';
+import { fetchAllLeads, Lead, LEAD_STATUSES, reassignLeads, statusLabel, titleCase } from '@/lib/leads';
 import { dialDigits } from '@/lib/phone';
+import { EmployeeOption, fetchEmployees } from '@/lib/reporting';
 import { useAuth } from '@/store/auth';
 import { ColorName, colors } from '@/theme';
 
@@ -39,18 +42,26 @@ function formatDate(iso?: string | null) {
   return isNaN(d.getTime()) ? null : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
-/** `now` is captured when the list loads (render must stay pure). */
-function LeadRow({ lead, now, onPress }: { lead: Lead; now: number; onPress: () => void }) {
+const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', BusinessAdvisor: 'Business Advisor', FieldSales: 'Field Sales' };
+
+/**
+ * `now` is captured when the list loads (render must stay pure). In selection mode (Admin) a tick circle shows first and
+ * `owner` (Admin → All leads) names who holds the lead.
+ */
+function LeadRow({ lead, now, onPress, onLongPress, selecting, selected, owner }: { lead: Lead; now: number; onPress: () => void; onLongPress?: () => void; selecting?: boolean; selected?: boolean; owner?: string }) {
   const [fg, bg] = statusTone(lead.status);
   const name = lead.companyName || lead.contactName || 'Unnamed lead';
-  const sub = [lead.contactName, titleCase(lead.city)].filter(Boolean).join(' · ');
+  const sub = [lead.contactName, titleCase(lead.city), owner ? `Owner: ${owner}` : ''].filter(Boolean).join(' · ');
   const nextAction = formatDate(lead.nextActionDate);
   const overdue = !!lead.nextActionDate && new Date(lead.nextActionDate).getTime() < now;
   const [pfg, pbg]: [ColorName, ColorName] = lead.priority ? PRIORITY_TONE[lead.priority] : ['slate', 'slateSoft'];
 
   return (
-    <Card style={{ gap: 10 }} onPress={onPress}>
+    <Card style={{ gap: 10, ...(selected ? { borderColor: colors.primary, backgroundColor: colors.primarySoft } : null) }} onPress={onPress} onLongPress={onLongPress}>
       <Row>
+        {selecting ? (
+          <View style={[styles.tick, selected ? { backgroundColor: colors.primary, borderColor: colors.primary } : null]}>{selected ? <Icon name="check" size={14} color="surface" /> : null}</View>
+        ) : null}
         <Avatar name={name} size={40} />
         <View style={{ flex: 1 }}>
           <AppText variant="section" numberOfLines={1}>
@@ -128,6 +139,17 @@ export default function LeadsScreen() {
   const key = `${scope}|${query}`;
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const loading = loadedKey !== key;
+
+  // Admin only: pick leads, then give them to an employee (or back to the pool).
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+  // undefined = nothing chosen yet, null = the lead pool, otherwise an employee id.
+  const [target, setTarget] = useState<string | null | undefined>(undefined);
+  const [saving, setSaving] = useState(false);
+  const [sheetError, setSheetError] = useState('');
+  const [notice, setNotice] = useState('');
 
   // Debounce typing so we don't hit the API on every key.
   useEffect(() => {
@@ -226,11 +248,87 @@ export default function LeadsScreen() {
   const total = leads.length;
   const filtering = statusSel.length + prioritySel.length + citySel.length + websiteSel.length + activeUserSel.length > 0;
 
+  // --- reassign (Admin) ---
+  const stopSelecting = () => {
+    setSelecting(false);
+    setSelected(new Set());
+  };
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  // A long press starts selecting with that lead ticked.
+  const startWith = (id: string) => {
+    setSelecting(true);
+    setSelected(new Set([id]));
+  };
+  const allShownSelected = leads.length > 0 && leads.every((l) => selected.has(l._id));
+  const changeScope = (v: string) => {
+    setScope(v);
+    stopSelecting();
+  };
+
+  // The notice goes away by itself.
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(''), 4000);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  const openReassign = () => {
+    setTarget(undefined);
+    setSheetError('');
+    setSheetOpen(true);
+    if (employees.length === 0) {
+      fetchEmployees()
+        .then((list) => setEmployees(list.filter((e) => e.status === 'Active')))
+        .catch((e: Error) => setSheetError(e.message));
+    }
+  };
+
+  const confirmReassign = async () => {
+    if (target === undefined) return;
+    setSaving(true);
+    setSheetError('');
+    try {
+      const { count } = await reassignLeads([...selected], target);
+      const who = target === null ? 'the lead pool' : (employees.find((e) => e.id === target)?.fullName ?? 'the employee');
+      setSheetOpen(false);
+      stopSelecting();
+      setNotice(`${count} ${count === 1 ? 'lead' : 'leads'} moved to ${who}`);
+      await load('refresh');
+    } catch (e) {
+      setSheetError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <Header title={pool ? 'Lead pool' : scope} subtitle={loading ? 'Loading…' : `${total} ${total === 1 ? 'lead' : 'leads'}`} right={<IconButton icon="clock" onPress={() => router.push('/followups')} />} />
+      <Header
+        title={pool ? 'Lead pool' : scope}
+        subtitle={selecting ? `${selected.size} selected` : loading ? 'Loading…' : `${total} ${total === 1 ? 'lead' : 'leads'}`}
+        right={
+          <Row gap={8}>
+            {isAdmin ? <IconButton icon={selecting ? 'x' : 'check'} onPress={() => (selecting ? stopSelecting() : setSelecting(true))} /> : null}
+            <IconButton icon="clock" onPress={() => router.push('/followups')} />
+          </Row>
+        }
+      />
+      {notice ? (
+        <View style={styles.notice}>
+          <Icon name="check" size={16} color="success" />
+          <AppText variant="label" color="success" weight="600" style={{ flex: 1 }}>
+            {notice}
+          </AppText>
+        </View>
+      ) : null}
       <View style={styles.controls}>
-        <FilterChips items={scopes} value={scope} onChange={setScope} />
+        <FilterChips items={scopes} value={scope} onChange={changeScope} />
         <Field icon="search" placeholder="Search name, company or phone" value={search} onChangeText={setSearch} />
         {/* One row, side by side. Compact buttons so Status, Priority, City and Website fit; swipe sideways for more (User). */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
@@ -248,7 +346,18 @@ export default function LeadsScreen() {
         <FlatList
           data={leads}
           keyExtractor={(l) => l._id}
-          renderItem={({ item }) => <LeadRow lead={item} now={now} onPress={() => router.push({ pathname: '/lead/[id]', params: { id: item._id } })} />}
+          extraData={selected}
+          renderItem={({ item }) => (
+            <LeadRow
+              lead={item}
+              now={now}
+              selecting={selecting}
+              selected={selected.has(item._id)}
+              owner={allScope ? (ownerOf(item)?.name ?? 'Not assigned') : undefined}
+              onPress={() => (selecting ? toggle(item._id) : router.push({ pathname: '/lead/[id]', params: { id: item._id } }))}
+              onLongPress={isAdmin && !selecting ? () => startWith(item._id) : undefined}
+            />
+          )}
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load('refresh')} tintColor={colors.primary} />}
           ListEmptyComponent={
@@ -267,9 +376,50 @@ export default function LeadsScreen() {
         />
       )}
 
-      <Pressable onPress={() => router.push('/lead/new')} style={styles.fab} accessibilityLabel="Add lead">
-        <Icon name="plus" size={26} color="surface" />
-      </Pressable>
+      {selecting ? (
+        <View style={styles.bar}>
+          <Pressable onPress={() => setSelected(allShownSelected ? new Set() : new Set(leads.map((l) => l._id)))} hitSlop={8}>
+            <AppText variant="label" color="primary" weight="600">
+              {allShownSelected ? 'Clear' : `Select all ${total}`}
+            </AppText>
+          </Pressable>
+          <View style={{ flex: 1 }} />
+          <Button label={selected.size ? `Reassign ${selected.size}` : 'Reassign'} icon="users" small disabled={selected.size === 0} onPress={openReassign} />
+        </View>
+      ) : (
+        <Pressable onPress={() => router.push('/lead/new')} style={styles.fab} accessibilityLabel="Add lead">
+          <Icon name="plus" size={26} color="surface" />
+        </Pressable>
+      )}
+
+      {/* Who gets the leads: an employee, or the pool (nobody). */}
+      <Sheet visible={sheetOpen} title="Reassign leads" onClose={() => !saving && setSheetOpen(false)}>
+        <AppText variant="caption" color="textMuted">
+          Move {selected.size} {selected.size === 1 ? 'lead' : 'leads'} to:
+        </AppText>
+        <ScrollView style={{ maxHeight: 320 }} contentContainerStyle={{ gap: 8 }}>
+          {[{ id: null as string | null, name: 'Lead pool', sub: 'No owner: anyone can claim it' }, ...employees.map((e) => ({ id: e.id as string | null, name: e.fullName, sub: ROLE_LABEL[e.role] ?? e.role }))].map((o) => {
+            const on = target === o.id;
+            return (
+              <Pressable key={o.id ?? 'pool'} onPress={() => setTarget(o.id)} style={[styles.option, on ? { borderColor: colors.primary, backgroundColor: colors.primarySoft } : null]}>
+                <View style={[styles.radio, on ? { borderColor: colors.primary } : null]}>{on ? <View style={styles.radioDot} /> : null}</View>
+                <View style={{ flex: 1 }}>
+                  <AppText weight="600">{o.name}</AppText>
+                  <AppText variant="caption" color="textMuted">
+                    {o.sub}
+                  </AppText>
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+        {sheetError ? (
+          <AppText variant="label" color="danger">
+            {sheetError}
+          </AppText>
+        ) : null}
+        <Button label={saving ? 'Saving…' : `Reassign ${selected.size} ${selected.size === 1 ? 'lead' : 'leads'}`} loading={saving} disabled={target === undefined} onPress={confirmReassign} />
+      </Sheet>
     </SafeAreaView>
   );
 }
@@ -281,4 +431,10 @@ const styles = StyleSheet.create({
   call: { padding: 9, borderRadius: 10, backgroundColor: colors.successSoft },
   chip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingTop: 60 },
+  tick: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  notice: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 20, marginBottom: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: colors.successSoft },
+  bar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
+  option: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
 });

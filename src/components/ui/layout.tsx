@@ -78,17 +78,19 @@ export function Card({
   children,
   style,
   onPress,
+  onLongPress,
   borderColor,
 }: {
   children: ReactNode;
   style?: ViewStyle;
   onPress?: () => void;
+  onLongPress?: () => void;
   borderColor?: ColorName;
 }) {
   const s = [styles.card, borderColor ? { borderColor: colors[borderColor] } : null, style];
   if (onPress)
     return (
-      <Pressable onPress={onPress} style={s}>
+      <Pressable onPress={onPress} onLongPress={onLongPress} style={s}>
         {children}
       </Pressable>
     );

@@ -217,6 +217,14 @@ export function changeStatus(id: string, input: { status: LeadStatus; reason?: s
   return api<{ lead: Lead; customerId?: string }>(`/leads/${id}/status`, { method: 'PATCH', body: input });
 }
 
+/**
+ * Admin: POST /leads/bulk-reassign. Gives the leads to an employee, or to nobody (`newAssigneeId` null), which moves them
+ * to the lead pool. Returns how many were changed.
+ */
+export function reassignLeads(leadIds: string[], newAssigneeId: string | null) {
+  return api<{ count: number }>('/leads/bulk-reassign', { method: 'POST', body: { leadIds, newAssigneeId } });
+}
+
 export function titleCase(s?: string) {
   return (s ?? '').replace(/\b\w/g, (c) => c.toUpperCase());
 }
