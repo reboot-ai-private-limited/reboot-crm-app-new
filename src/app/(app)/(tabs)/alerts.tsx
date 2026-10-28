@@ -120,6 +120,7 @@ export default function AlertsScreen() {
         .catch(() => load('initial')); // put the list back in step with the server if it failed
     }
     if (n.leadId?._id) router.push({ pathname: '/lead/[id]', params: { id: n.leadId._id } });
+    else if (n.customerId?._id) router.push({ pathname: '/customers/[id]', params: { id: n.customerId._id } });
   };
 
   const readAll = async () => {

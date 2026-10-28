@@ -12,6 +12,7 @@ import {
   formatDuration,
   hostName,
   isActiveMeeting,
+  isOfflineMeeting,
   linkParticipant,
   Meeting,
   MeetingParticipant,
@@ -19,7 +20,9 @@ import {
   meetingStatusTone,
   reminderState,
   syncMeeting,
+  venueMapUrl,
 } from '@/lib/meetings';
+import { mapUrl } from '@/lib/leads';
 import { EmployeeOption, fetchEmployees } from '@/lib/reporting';
 import { useAuth } from '@/store/auth';
 import { colors, radius } from '@/theme';
@@ -233,8 +236,10 @@ export function MeetingCard({
   const reminder = reminderState(meeting);
   const host = hostName(meeting);
   const { tracking } = meeting;
+  const offline = isOfflineMeeting(meeting);
 
   const copyLink = async () => {
+    if (!meeting.meetLink) return;
     try {
       await Clipboard.setStringAsync(meeting.meetLink);
       onToast('Meeting link copied to clipboard');
@@ -269,10 +274,12 @@ export function MeetingCard({
         <View style={{ flex: 1, gap: 2 }}>
           <AppText weight="700" numberOfLines={1}>
             {meeting.title}
+            {offline ? ' · Field' : ''}
           </AppText>
           <AppText variant="caption" color="textMuted">
             {formatMeetingSlot(meeting.startAt, meeting.endAt, meeting.durationMin)}
             {host ? ` · Host: ${host}` : ''}
+            {meeting.rescheduleCount > 0 ? ` · Rescheduled ×${meeting.rescheduleCount}` : ''}
           </AppText>
         </View>
         <StatusPill status={meeting.status} />
@@ -281,8 +288,21 @@ export function MeetingCard({
 
       {expanded ? (
         <>
+      {/* Field meeting: the place, with a Maps shortcut (no link exists) */}
+      {offline && meeting.venue && meeting.status !== 'CANCELLED' ? (
+        <View style={styles.linkRow}>
+          <View style={styles.linkBox}>
+            <Icon name="pin" size={16} color="primary" />
+            <AppText variant="caption" color="text" style={{ flex: 1 }}>
+              {meeting.venue}
+            </AppText>
+          </View>
+          <Button label="Maps" variant="outline" small onPress={() => Linking.openURL(venueMapUrl(meeting.venue!))} />
+        </View>
+      ) : null}
+
       {/* Meet link & Join */}
-      {meeting.status !== 'CANCELLED' && meeting.meetLink ? (
+      {!offline && meeting.status !== 'CANCELLED' && meeting.meetLink ? (
         <View style={styles.linkRow}>
           <Pressable onPress={copyLink} style={styles.linkBox}>
             <Icon name="video" size={16} color="primary" />
@@ -298,7 +318,7 @@ export function MeetingCard({
               variant="primary"
               small
               icon="video"
-              onPress={() => Linking.openURL(meeting.meetLink)}
+              onPress={() => Linking.openURL(meeting.meetLink!)}
             />
           ) : null}
         </View>
@@ -312,7 +332,7 @@ export function MeetingCard({
             value={
               meeting.notify
                 ? meeting.linkSentAt
-                  ? `Link ${formatClock(meeting.linkSentAt)}`
+                  ? `${offline ? 'Venue' : 'Link'} ${formatClock(meeting.linkSentAt)}`
                   : 'Not sent'
                 : 'Off'
             }
@@ -322,7 +342,7 @@ export function MeetingCard({
             label="Host messaged"
             value={
               meeting.employeeLinkSentAt
-                ? `Link ${formatClock(meeting.employeeLinkSentAt)}`
+                ? `${offline ? 'Venue' : 'Link'} ${formatClock(meeting.employeeLinkSentAt)}`
                 : 'Not sent'
             }
             ok={!!meeting.employeeLinkSentAt}
@@ -332,28 +352,46 @@ export function MeetingCard({
             value={reminder.text === 'Sent' ? `Sent ${formatClock(meeting.reminderSentAt)}` : reminder.text}
             ok={reminder.ok}
           />
-          <InfoRow
-            label="Outside join"
-            value={
-              tracking.externalJoined
-                ? `Joined ${formatClock(tracking.firstExternalJoinAt)}`
-                : started
-                ? 'Not joined'
-                : '—'
-            }
-            ok={tracking.externalJoined ? true : started ? false : undefined}
-          />
-          <InfoRow
-            label="Our team"
-            value={
-              tracking.employeeJoined
-                ? `Joined ${formatClock(tracking.firstEmployeeJoinAt)}`
-                : started
-                ? 'Not joined'
-                : '—'
-            }
-            ok={tracking.employeeJoined ? true : started ? false : undefined}
-          />
+          {!offline ? (
+            <>
+              <InfoRow
+                label="Outside join"
+                value={
+                  tracking.externalJoined
+                    ? `Joined ${formatClock(tracking.firstExternalJoinAt)}`
+                    : started
+                    ? 'Not joined'
+                    : '—'
+                }
+                ok={tracking.externalJoined ? true : started ? false : undefined}
+              />
+              <InfoRow
+                label="Our team"
+                value={
+                  tracking.employeeJoined
+                    ? `Joined ${formatClock(tracking.firstEmployeeJoinAt)}`
+                    : started
+                    ? 'Not joined'
+                    : '—'
+                }
+                ok={tracking.employeeJoined ? true : started ? false : undefined}
+              />
+            </>
+          ) : null}
+          {offline && meeting.status === 'DONE' ? (
+            meeting.checkIn ? (
+              <Pressable style={styles.metricItem} onPress={() => Linking.openURL(mapUrl(meeting.checkIn)!)}>
+                <AppText variant="caption" weight="600" color="textMuted" style={{ textTransform: 'uppercase', fontSize: 10 }}>
+                  Check-in
+                </AppText>
+                <AppText variant="caption" weight="600" color="success">
+                  {formatClock(meeting.checkIn.at)} · view on map
+                </AppText>
+              </Pressable>
+            ) : (
+              <InfoRow label="Check-in" value="No location recorded" ok={false} />
+            )
+          ) : null}
         </View>
       ) : null}
 
@@ -367,7 +405,7 @@ export function MeetingCard({
       ) : null}
 
       {/* Tracking error banner */}
-      {tracking.error ? (
+      {!offline && tracking.error ? (
         <View style={styles.errorBox}>
           <AppText variant="caption" color="danger" weight="600">
             Attendance could not be read from Google Meet. Press Refresh to try again.
@@ -442,7 +480,7 @@ export function MeetingCard({
             onPress={() => onCancel(meeting)}
           />
         ) : null}
-        {meeting.status !== 'CANCELLED' ? (
+        {!offline && meeting.status !== 'CANCELLED' ? (
           <Button
             label="Refresh"
             variant="soft"
@@ -455,7 +493,7 @@ export function MeetingCard({
       </View>
 
       {/* Toggle Who joined */}
-      {meeting.status !== 'CANCELLED' ? (
+      {!offline && meeting.status !== 'CANCELLED' ? (
         <Pressable
           onPress={() => setShowParticipants((v) => !v)}
           style={styles.participantsToggle}
@@ -471,7 +509,7 @@ export function MeetingCard({
       ) : null}
 
       {/* Who joined list (Phase 2) */}
-      {showParticipants && meeting.status !== 'CANCELLED' ? (
+      {!offline && showParticipants && meeting.status !== 'CANCELLED' ? (
         <View style={styles.participantsContainer}>
           {tracking.participants.length === 0 ? (
             <AppText variant="caption" color="textMuted" style={{ padding: 8, fontStyle: 'italic' }}>

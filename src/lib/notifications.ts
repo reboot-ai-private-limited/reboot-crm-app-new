@@ -12,7 +12,9 @@ export type NotificationType =
   | 'MEETING_RESCHEDULED'
   | 'MEETING_CANCELLED'
   | 'MEETING_STARTING'
-  | 'MEETING_NEEDS_OUTCOME';
+  | 'MEETING_NEEDS_OUTCOME'
+  | 'RENEWAL_DUE'
+  | 'SERVICE_EXPIRED';
 
 export type AppNotification = {
   _id: string;
@@ -21,6 +23,7 @@ export type AppNotification = {
   body?: string;
   priority: 'HIGH' | 'NORMAL';
   leadId?: { _id: string; companyName?: string; contactName?: string } | null;
+  customerId?: { _id: string; businessName?: string; contactName?: string } | null;
   meetingId?: string | null;
   readAt?: string | null;
   createdAt: string;
@@ -51,6 +54,8 @@ export const notificationStyle: Record<NotificationType, { icon: IconName; tone:
   MEETING_CANCELLED: { icon: 'video', tone: 'slate' },
   MEETING_STARTING: { icon: 'video', tone: 'danger' },
   MEETING_NEEDS_OUTCOME: { icon: 'check', tone: 'success' },
+  RENEWAL_DUE: { icon: 'refresh', tone: 'warning' },
+  SERVICE_EXPIRED: { icon: 'refresh', tone: 'danger' },
 };
 
 /** "just now", "5 min ago", "3 h ago", "2 d ago", then the date. */
@@ -72,6 +77,13 @@ export function setUnreadCount(n: number) {
   if (n === unreadCount) return;
   unreadCount = n;
   listeners.forEach((l) => l(n));
+}
+
+/** Re-reads the unread count now (a push just arrived) instead of waiting for the next poll. */
+export function refreshUnreadCount() {
+  api<{ unread: number }>('/notifications/unread-count')
+    .then((r) => setUnreadCount(r.unread))
+    .catch(() => {});
 }
 
 const POLL_MS = 30_000;

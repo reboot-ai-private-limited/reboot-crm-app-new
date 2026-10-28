@@ -12,13 +12,15 @@ import { DashboardRow, fetchDashboardRows, ROLE_LABEL } from './reporting';
  * Admin "Action required": exceptions worked out in the app from existing APIs
  * (the planned /exceptions endpoint does not exist yet).
  */
-export const ACTION_KINDS = ['alerts', 'followups', 'meetings', 'hot', 'pool', 'proposals', 'invoices', 'inactive'] as const;
+export const ACTION_KINDS = ['alerts', 'followups', 'meetings', 'hot', 'pool', 'proposals', 'invoices', 'renewals', 'inactive'] as const;
 export type ActionKind = (typeof ACTION_KINDS)[number];
 
 /** A proposal with no progress for this many days is flagged. */
 export const PROPOSAL_WAIT_DAYS = 3;
 /** An active employee with no CRM activity for this many days is flagged. */
 export const INACTIVE_DAYS = 3;
+/** How far ahead the renewals list looks. */
+export const RENEWAL_WINDOW_DAYS = 30;
 
 export const ACTION_INFO: Record<ActionKind, { title: string; hint: string; icon: IconName; tone: 'danger' | 'warning' | 'primary' | 'purple' }> = {
   alerts: { title: 'Unread alerts', hint: 'New notifications for you', icon: 'bell', tone: 'primary' },
@@ -26,13 +28,11 @@ export const ACTION_INFO: Record<ActionKind, { title: string; hint: string; icon
   meetings: { title: 'Meetings need an outcome', hint: 'Ended, but not marked Done or Not attend', icon: 'calendar', tone: 'warning' },
   hot: { title: 'HOT leads not contacted', hint: 'High-priority leads still Fresh', icon: 'zap', tone: 'danger' },
   invoices: { title: 'Overdue invoices', hint: 'Past due date with balance unpaid', icon: 'rupee', tone: 'danger' },
+  renewals: { title: 'Renewals approaching', hint: `Services expiring in ${RENEWAL_WINDOW_DAYS} days, or expired lately`, icon: 'refresh', tone: 'warning' },
   pool: { title: 'Unassigned leads', hint: 'Waiting in the lead pool', icon: 'userx', tone: 'warning' },
   proposals: { title: 'Proposals without response', hint: `No progress ${PROPOSAL_WAIT_DAYS}+ days after the proposal`, icon: 'file', tone: 'purple' },
   inactive: { title: 'Inactive employees', hint: `No activity in the last ${INACTIVE_DAYS} days`, icon: 'users', tone: 'warning' },
 };
-
-/** Shown greyed out until their backend exists. */
-export const COMING_SOON: { title: string; icon: IconName }[] = [{ title: 'Renewals approaching', icon: 'refresh' }];
 
 export type ActionItem = {
   id: string;
@@ -81,14 +81,16 @@ async function overdueFollowUps(): Promise<ActionResult> {
 async function unreadAlerts(): Promise<ActionResult> {
   const res = await fetchNotifications({ unread: true });
   const items = res.data
-    .filter((n) => n.leadId?._id)
+    .filter((n) => n.leadId?._id || n.customerId?._id)
     .map((n) => ({
       id: n._id,
       title: n.title,
       subtitle: n.body ?? '',
       meta: timeAgo(n.createdAt),
       metaTone: (n.priority === 'HIGH' ? 'danger' : 'textMuted') as ColorName,
-      target: { pathname: '/lead/[id]' as const, params: { id: n.leadId!._id } },
+      target: n.leadId?._id
+        ? { pathname: '/lead/[id]' as const, params: { id: n.leadId._id } }
+        : { pathname: '/customers/[id]' as const, params: { id: n.customerId!._id } },
     }));
   return { items, total: res.unread };
 }
@@ -194,6 +196,34 @@ async function overdueInvoices(): Promise<ActionResult> {
   return { items: items.filter((i) => i.target.params.id), total: items.length, note: due.length ? `${rupees(amount)} unpaid` : undefined };
 }
 
+type RenewalRow = {
+  _id: string;
+  serviceName: string;
+  expiryDate: string;
+  status: 'ACTIVE' | 'EXPIRED';
+  /** Whole days to the expiry date: 0 = today, negative = already past. */
+  daysLeft: number;
+  customer: { _id: string; businessName: string; contactName: string };
+};
+
+const renewalMeta = (daysLeft: number) =>
+  daysLeft < 0 ? `Expired ${late(-daysLeft)} ago` : daysLeft === 0 ? 'Today' : daysLeft === 1 ? 'Tomorrow' : `In ${daysLeft} days`;
+
+/** Services that expire within the window, plus the ones that expired in the last 30 days. Soonest first. */
+async function renewalsApproaching(): Promise<ActionResult> {
+  const res = await api<{ data: RenewalRow[]; total: number }>('/customers/renewals', { query: { days: RENEWAL_WINDOW_DAYS } });
+  const items = res.data.map((r) => ({
+    id: r._id,
+    title: r.customer.businessName || r.customer.contactName || 'Customer',
+    subtitle: `${r.serviceName} · ${new Date(r.expiryDate).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`,
+    meta: renewalMeta(r.daysLeft),
+    // Expired or about to expire this week is red; the rest is amber.
+    metaTone: (r.daysLeft <= 7 ? 'danger' : 'warning') as ColorName,
+    target: { pathname: '/customers/[id]' as const, params: { id: r.customer._id } },
+  }));
+  return { items, total: res.total };
+}
+
 /** Active non-admin employees whose attendance over the window is 0 days. */
 async function inactiveEmployees(): Promise<ActionResult> {
   const end = new Date();
@@ -220,5 +250,6 @@ export const ACTION_LOADERS: Record<ActionKind, () => Promise<ActionResult>> = {
   pool: poolLeads,
   proposals: staleProposals,
   invoices: overdueInvoices,
+  renewals: renewalsApproaching,
   inactive: inactiveEmployees,
 };

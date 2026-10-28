@@ -1,5 +1,6 @@
 import { ColorName } from '@/theme';
 import { api } from './api';
+import { getLocation } from './location';
 
 export const MEETING_STATUSES = ['SCHEDULED', 'IN_PROGRESS', 'DONE', 'NOT_HAPPENED', 'CANCELLED'] as const;
 export type MeetingStatus = (typeof MEETING_STATUSES)[number];
@@ -25,6 +26,12 @@ export const meetingStatusTone = (s?: string): [ColorName, ColorName] =>
 
 export const meetingStatusLabel = (s?: string) =>
   s && s in MEETING_STATUS_LABEL ? MEETING_STATUS_LABEL[s as MeetingStatus] : (s ?? '').replace(/_/g, ' ');
+
+export type MeetingType = 'ONLINE' | 'OFFLINE';
+export const isOfflineMeeting = (m: Pick<Meeting, 'type'>) => m.type === 'OFFLINE';
+
+/** Google Maps search for the venue text. Nothing is stored; the Maps app opens it. */
+export const venueMapUrl = (venue: string) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venue)}`;
 
 export const isActiveMeeting = (s: MeetingStatus) => s === 'SCHEDULED' || s === 'IN_PROGRESS';
 
@@ -65,7 +72,13 @@ export type Meeting = {
   startAt: string;
   endAt: string;
   durationMin: number;
-  meetLink: string;
+  /** OFFLINE is a field meeting: a venue, no link, no attendance tracking. */
+  type: MeetingType;
+  venue?: string | null;
+  /** null for an OFFLINE meeting: it never has a link. */
+  meetLink: string | null;
+  /** Where the employee was when they marked an OFFLINE meeting Done. */
+  checkIn?: { lat: number; lng: number; at: string } | null;
   status: MeetingStatus;
   outcomeNote?: string | null;
   rescheduleCount: number;
@@ -97,11 +110,12 @@ export const shouldPoll = (meetings: Pick<Meeting, 'status' | 'startAt' | 'endAt
     return open && now <= new Date(m.endAt).getTime() + POLL_AFTER_MIN * 60_000;
   });
 
-export const reminderState = (m: Pick<Meeting, 'notify' | 'linkSentAt' | 'reminderSentAt'>): { text: string; ok?: boolean } => {
+export const reminderState = (m: Pick<Meeting, 'notify' | 'linkSentAt' | 'reminderSentAt' | 'type'>): { text: string; ok?: boolean } => {
   if (!m.notify) return { text: 'Off' };
   if (!m.reminderSentAt) return { text: 'Pending', ok: false };
   const sentWithLink = !!m.linkSentAt && Math.abs(new Date(m.reminderSentAt).getTime() - new Date(m.linkSentAt).getTime()) < 60_000;
-  return sentWithLink ? { text: 'Link was the reminder', ok: true } : { text: 'Sent', ok: true };
+  // A field meeting has no link: its first message (time and place) is the reminder.
+  return sentWithLink ? { text: m.type === 'OFFLINE' ? 'First message was the reminder' : 'Link was the reminder', ok: true } : { text: 'Sent', ok: true };
 };
 
 export const formatDuration = (seconds: number) => {
@@ -118,11 +132,13 @@ export type MeetingQueryOptions = {
   from?: string;
   to?: string;
   status?: string;
+  type?: MeetingType;
   limit?: number;
   page?: number;
 };
 
-// API functions - location is strictly omitted per GPS Ground Rule 4.
+// API functions - location is omitted on every meeting call, except marking a field (OFFLINE) meeting Done:
+// there is no Meet attendance for it, so the employee's position at that moment is the only proof it took place.
 export async function fetchMeetings(optionsOrLeadId?: string | MeetingQueryOptions): Promise<Meeting[]> {
   const query: Record<string, string | number | undefined> = {};
   if (typeof optionsOrLeadId === 'string') {
@@ -134,6 +150,7 @@ export async function fetchMeetings(optionsOrLeadId?: string | MeetingQueryOptio
     if (optionsOrLeadId.from) query.from = optionsOrLeadId.from;
     if (optionsOrLeadId.to) query.to = optionsOrLeadId.to;
     if (optionsOrLeadId.status) query.status = optionsOrLeadId.status;
+    if (optionsOrLeadId.type) query.type = optionsOrLeadId.type;
     if (optionsOrLeadId.limit) query.limit = optionsOrLeadId.limit;
     if (optionsOrLeadId.page) query.page = optionsOrLeadId.page;
   }
@@ -143,6 +160,9 @@ export async function fetchMeetings(optionsOrLeadId?: string | MeetingQueryOptio
 
 export async function scheduleMeeting(input: {
   leadId: string;
+  /** OFFLINE = a field meeting at `venue`: no Google event, no link. Default ONLINE. */
+  type?: MeetingType;
+  venue?: string;
   startAt: Date;
   durationMin?: number;
   title?: string;
@@ -156,17 +176,22 @@ export async function scheduleMeeting(input: {
     durationMin: input.durationMin ?? 30,
     notify: input.notify !== false,
   };
+  if (input.type === 'OFFLINE') {
+    body.type = 'OFFLINE';
+    body.venue = input.venue?.trim();
+  }
   if (input.title?.trim()) body.title = input.title.trim();
   if (input.description?.trim()) body.description = input.description.trim();
   if (input.hostEmployeeId) body.hostEmployeeId = input.hostEmployeeId;
   return api<Meeting>('/meetings', { method: 'POST', body });
 }
 
-export async function rescheduleMeeting(id: string, input: { startAt: Date; durationMin?: number }): Promise<Meeting> {
+export async function rescheduleMeeting(id: string, input: { startAt: Date; durationMin?: number; venue?: string }): Promise<Meeting> {
   const body: Record<string, unknown> = {
     startAt: input.startAt.toISOString(),
   };
   if (input.durationMin) body.durationMin = input.durationMin;
+  if (input.venue?.trim()) body.venue = input.venue.trim();
   return api<Meeting>(`/meetings/${id}/reschedule`, { method: 'PATCH', body });
 }
 
@@ -176,11 +201,15 @@ export async function cancelMeeting(id: string, reason?: string): Promise<Meetin
   return api<Meeting>(`/meetings/${id}/cancel`, { method: 'POST', body });
 }
 
-export async function markMeetingStatus(id: string, input: { status: 'DONE' | 'NOT_HAPPENED'; note?: string }): Promise<Meeting> {
+export async function markMeetingStatus(
+  id: string,
+  input: { status: 'DONE' | 'NOT_HAPPENED'; note?: string; /** Field meeting being marked Done: attach the GPS position. */ withLocation?: boolean },
+): Promise<Meeting> {
   const body: Record<string, unknown> = {
     status: input.status,
   };
   if (input.note?.trim()) body.note = input.note.trim();
+  if (input.withLocation) body.location = await getLocation();
   return api<Meeting>(`/meetings/${id}/status`, { method: 'POST', body });
 }
 

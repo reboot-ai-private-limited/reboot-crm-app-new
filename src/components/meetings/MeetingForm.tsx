@@ -5,9 +5,9 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { Icon } from '@/components/ui/Icon';
-import { Field } from '@/components/ui/layout';
+import { Field, Segmented } from '@/components/ui/layout';
 import { Sheet } from '@/components/ui/Sheet';
-import { DURATIONS, Meeting, rescheduleMeeting, scheduleMeeting } from '@/lib/meetings';
+import { DURATIONS, isOfflineMeeting, Meeting, rescheduleMeeting, scheduleMeeting } from '@/lib/meetings';
 import { EmployeeOption, fetchEmployees } from '@/lib/reporting';
 import { useAuth } from '@/store/auth';
 import { colors, radius } from '@/theme';
@@ -57,6 +57,11 @@ export function MeetingForm({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [notify, setNotify] = useState(true);
+  // A field meeting: a venue instead of a Meet link. Rescheduling keeps the type the meeting already has.
+  const [type, setType] = useState<'Online' | 'Field visit'>('Online');
+  const [venue, setVenue] = useState(() => (mode === 'reschedule' ? meetingToReschedule?.venue ?? '' : ''));
+  const offline = mode === 'reschedule' ? !!meetingToReschedule && isOfflineMeeting(meetingToReschedule) : type === 'Field visit';
+  const venueMissing = offline && venue.trim().length < 3;
   const [hostEmployeeId, setHostEmployeeId] = useState('');
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [hostPickerOpen, setHostPickerOpen] = useState(false);
@@ -84,7 +89,8 @@ export function MeetingForm({
   const now = new Date();
   const inPast = startAt.getTime() <= now.getTime();
 
-  const channels = [lead.mobile && 'WhatsApp', lead.email && 'email invite'].filter(Boolean);
+  // A field meeting sends no Calendar invite, only WhatsApp.
+  const channels = [lead.mobile && 'WhatsApp', !offline && lead.email && 'email invite'].filter(Boolean);
   const channelsText = channels.join(' and ');
   const hasChannels = channels.length > 0;
 
@@ -101,6 +107,10 @@ export function MeetingForm({
       setError('The meeting must start in the future.');
       return;
     }
+    if (venueMissing) {
+      setError('Enter where the meeting will be.');
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -108,6 +118,8 @@ export function MeetingForm({
       if (mode === 'schedule') {
         await scheduleMeeting({
           leadId,
+          type: offline ? 'OFFLINE' : 'ONLINE',
+          venue: offline ? venue : undefined,
           startAt,
           durationMin,
           title: title.trim() || undefined,
@@ -120,6 +132,7 @@ export function MeetingForm({
         await rescheduleMeeting(meetingToReschedule._id, {
           startAt,
           durationMin,
+          venue: offline ? venue : undefined,
         });
         onToast('Meeting rescheduled');
       }
@@ -138,9 +151,11 @@ export function MeetingForm({
       showsVerticalScrollIndicator={false}
     >
       {/* Intro info */}
+      {mode === 'schedule' ? <Segmented items={['Online', 'Field visit']} value={type} onChange={(v) => setType(v as typeof type)} /> : null}
+
       {mode === 'schedule' ? (
         <AppText variant="caption" color="textMuted">
-          A Google Meet link will be generated for{' '}
+          {offline ? 'A field meeting at a place. No link is created for ' : 'A Google Meet link will be generated for '}
           <AppText variant="caption" weight="600" color="text">
             {lead.contactName || 'the lead'}
             {lead.companyName ? ` (${lead.companyName})` : ''}
@@ -153,10 +168,14 @@ export function MeetingForm({
           <AppText variant="caption" weight="600" color="text">
             {meetingToReschedule ? new Date(meetingToReschedule.startAt).toLocaleString() : ''}
           </AppText>
-          . The Google Meet link will stay the same
+          . {offline ? 'You can change the place too' : 'The Google Meet link will stay the same'}
           {meetingToReschedule?.notify ? ' and the lead will be notified of the new time.' : '.'}
         </AppText>
       )}
+
+      {offline ? (
+        <Field label="Venue" placeholder="Address or place of the meeting" value={venue} onChangeText={setVenue} maxLength={300} />
+      ) : null}
 
       {/* Date & Time Picker */}
       <View style={{ gap: 4 }}>
@@ -208,7 +227,7 @@ export function MeetingForm({
           {/* Title */}
           <Field
             label="Title (optional)"
-            placeholder={`Meeting with ${lead.companyName || lead.contactName || 'Lead'}`}
+            placeholder={`${offline ? 'Visit to' : 'Meeting with'} ${lead.companyName || lead.contactName || 'Lead'}`}
             value={title}
             onChangeText={setTitle}
             maxLength={120}
@@ -245,12 +264,12 @@ export function MeetingForm({
             </View>
             <View style={{ flex: 1, gap: 2 }}>
               <AppText weight="600" color="text">
-                Send the link to the lead
+                {offline ? 'Tell the lead the time and place' : 'Send the link to the lead'}
               </AppText>
               <AppText variant="caption" color="textMuted">
                 {hasChannels
                   ? `Sent now by ${channelsText}, with a reminder before the meeting.`
-                  : 'This lead has no mobile or email, share the link directly.'}
+                  : `This lead has no mobile${offline ? '' : ' or email'}, ${offline ? 'tell them yourself.' : 'share the link directly.'}`}
               </AppText>
             </View>
           </Pressable>
@@ -264,17 +283,21 @@ export function MeetingForm({
               <AppText variant="caption" weight="600">
                 Host ({selectedHostName}):{' '}
               </AppText>
-              Google Calendar invite to email
-              {selectedHostMobile ? `, WhatsApp to ${selectedHostMobile}` : ''} — Meet link now, reminder before meeting.
+              {offline ? (selectedHostMobile ? `WhatsApp to ${selectedHostMobile} — place and time now, reminder before the visit.` : 'No message (no mobile).') : `Google Calendar invite to email${selectedHostMobile ? `, WhatsApp to ${selectedHostMobile}` : ''} — Meet link now, reminder before meeting.`}
             </AppText>
             <AppText variant="caption" color="text">
               <AppText variant="caption" weight="600">
                 Lead ({lead.contactName || 'Lead'}):{' '}
               </AppText>
               {notify && hasChannels
-                ? `${lead.email ? `Calendar invite to ${lead.email}` : ''}${lead.email && lead.mobile ? ', ' : ''}${lead.mobile ? `WhatsApp to ${lead.mobile}` : ''} — Meet link now, reminder before meeting.`
+                ? `${!offline && lead.email ? `Calendar invite to ${lead.email}` : ''}${!offline && lead.email && lead.mobile ? ', ' : ''}${lead.mobile ? `WhatsApp to ${lead.mobile}` : ''} — ${offline ? 'place and time now' : 'Meet link now'}, reminder before meeting.`
                 : 'Nothing sent automatically.'}
             </AppText>
+            {offline ? (
+              <AppText variant="caption" color="textMuted">
+                Marking a field meeting Done needs a note and your location, so it is on record that you were there.
+              </AppText>
+            ) : null}
           </View>
         </>
       ) : null}
@@ -294,7 +317,7 @@ export function MeetingForm({
         label={mode === 'schedule' ? 'Schedule meeting' : 'Reschedule meeting'}
         variant="primary"
         loading={saving}
-        disabled={inPast || saving}
+        disabled={inPast || saving || venueMissing}
         onPress={handleSubmit}
       />
 

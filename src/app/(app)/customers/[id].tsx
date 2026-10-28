@@ -5,8 +5,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
+import { AddServiceForm } from '@/components/customers/AddServiceForm';
+import { EditCustomerForm } from '@/components/customers/EditCustomerForm';
+import { PaymentForm } from '@/components/customers/PaymentForm';
 import { Icon, IconName } from '@/components/ui/Icon';
 import { Avatar, Card, Header, Row, SectionHeader } from '@/components/ui/layout';
+import { Sheet } from '@/components/ui/Sheet';
+import { EmailDocumentForm } from '@/components/EmailDocumentForm';
 import { CustomerDetails, fetchCustomer, InvoiceStatus, rupees, sendInvoice, shortDate } from '@/lib/customers';
 import { titleCase } from '@/lib/leads';
 import { dialDigits, formatPhone } from '@/lib/phone';
@@ -96,6 +101,20 @@ export default function CustomerDetailsScreen() {
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(null);
 
+  // Edit details, add a service, record a payment: each opens a bottom sheet (same three actions as the web page).
+  // Who may do what is decided by the backend, exactly as for the web: its message is shown inside the sheet.
+  const [sheet, setSheet] = useState<'edit' | 'service' | 'payment' | 'email' | null>(null);
+  const [payInvoiceId, setPayInvoiceId] = useState<string | null>(null);
+  const [emailInvoiceId, setEmailInvoiceId] = useState<string | null>(null);
+
+  const saved = async (text: string, waitMs = 0) => {
+    setSheet(null);
+    setNotice({ text, ok: true });
+    // A new service's invoice is created by the backend a moment later.
+    if (waitMs) await new Promise((r) => setTimeout(r, waitMs));
+    await load();
+  };
+
   const act = async (invoiceId: string, action: 'view' | 'whatsapp' | 'share') => {
     setBusy(`${invoiceId}:${action}`);
     setNotice(null);
@@ -148,6 +167,11 @@ export default function CustomerDetailsScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />}>
+        {notice ? (
+          <AppText variant="label" color={notice.ok ? 'success' : 'danger'}>
+            {notice.text}
+          </AppText>
+        ) : null}
         <Card style={{ gap: 14 }}>
           <Row>
             <Avatar name={name} size={52} />
@@ -167,9 +191,10 @@ export default function CustomerDetailsScreen() {
               <Button label="WhatsApp" icon="chat" variant="outline" flex onPress={() => Linking.openURL(`https://wa.me/${dialDigits(customer)}`)} />
             </Row>
           ) : null}
-          {customer.leadId ? (
-            <Button label="View lead" icon="target" variant="outline" onPress={() => router.push({ pathname: '/lead/[id]', params: { id: String(customer.leadId) } })} />
-          ) : null}
+          <Row gap={10}>
+            <Button label="Edit details" icon="edit" variant="outline" flex onPress={() => setSheet('edit')} />
+            {customer.leadId ? <Button label="View lead" icon="target" variant="outline" flex onPress={() => router.push({ pathname: '/lead/[id]', params: { id: String(customer.leadId) } })} /> : null}
+          </Row>
         </Card>
 
         <Row gap={12}>
@@ -186,7 +211,7 @@ export default function CustomerDetailsScreen() {
           <InfoRow icon="calendar" label="Joined" value={shortDate(customer.joinedDate)} />
         </Card>
 
-        <SectionHeader title={`Services (${services.length})`} />
+        <SectionHeader title={`Services (${services.length})`} link="+ Add service" onPress={() => setSheet('service')} />
         {services.length === 0 ? (
           <AppText color="textMuted">No services attached yet.</AppText>
         ) : (
@@ -211,11 +236,6 @@ export default function CustomerDetailsScreen() {
         )}
 
         <SectionHeader title={`Invoices (${invoices.length})`} />
-        {notice ? (
-          <AppText variant="label" color={notice.ok ? 'success' : 'danger'}>
-            {notice.text}
-          </AppText>
-        ) : null}
         {invoices.length > 0 ? (
           <AppText variant="caption" color="textSubtle">
             The customer sees a Proforma invoice (number hidden) until it is fully paid, then the Billing invoice.
@@ -260,6 +280,17 @@ export default function CustomerDetailsScreen() {
                     Due date {dueDate}
                   </AppText>
                 ) : null}
+                {inv.status !== 'PAID' && inv.status !== 'CANCELLED' ? (
+                  <Button
+                    label="Record payment"
+                    icon="rupee"
+                    small
+                    onPress={() => {
+                      setPayInvoiceId(inv._id);
+                      setSheet('payment');
+                    }}
+                  />
+                ) : null}
                 {inv.status !== 'CANCELLED' ? (
                   <Row gap={8} style={{ marginTop: 4 }}>
                     <Button label="View" icon="eye" variant="outline" small flex loading={busy === `${inv._id}:view`} onPress={() => act(inv._id, 'view')} />
@@ -267,11 +298,39 @@ export default function CustomerDetailsScreen() {
                     <Button label="Share" icon="send" small flex loading={busy === `${inv._id}:share`} onPress={() => act(inv._id, 'share')} />
                   </Row>
                 ) : null}
+                {inv.status !== 'CANCELLED' ? (
+                  <Button
+                    label="Email invoice"
+                    icon="mail"
+                    variant="outline"
+                    small
+                    onPress={() => {
+                      setEmailInvoiceId(inv._id);
+                      setSheet('email');
+                    }}
+                  />
+                ) : null}
               </Card>
             );
           })
         )}
       </ScrollView>
+
+      <Sheet visible={sheet === 'edit'} title="Edit customer" onClose={() => setSheet(null)}>
+        <EditCustomerForm customer={customer} onSaved={() => saved('Customer updated.')} />
+      </Sheet>
+
+      <Sheet visible={sheet === 'service'} title="Add service" onClose={() => setSheet(null)} fullHeight>
+        <AddServiceForm customerId={customer._id} onSaved={() => saved('Service added. Its invoice is being created.', 600)} />
+      </Sheet>
+
+      <Sheet visible={sheet === 'email'} title="Email this invoice" onClose={() => setSheet(null)}>
+        {emailInvoiceId ? <EmailDocumentForm key={emailInvoiceId} kind="invoice" id={emailInvoiceId} defaultTo={customer.email ?? ''} onSent={(text) => saved(text)} /> : null}
+      </Sheet>
+
+      <Sheet visible={sheet === 'payment'} title="Record payment" onClose={() => setSheet(null)}>
+        {invoices.find((i) => i._id === payInvoiceId) ? <PaymentForm invoice={invoices.find((i) => i._id === payInvoiceId)!} onSaved={() => saved('Payment recorded.')} /> : null}
+      </Sheet>
     </SafeAreaView>
   );
 }

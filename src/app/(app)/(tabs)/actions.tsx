@@ -5,8 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { Icon } from '@/components/ui/Icon';
-import { Card, Header, IconBadge, Row, SectionHeader } from '@/components/ui/layout';
-import { ACTION_INFO, ACTION_KINDS, ACTION_LOADERS, ActionKind, ActionResult, COMING_SOON } from '@/lib/actions';
+import { Card, Header, IconBadge, Row } from '@/components/ui/layout';
+import { ACTION_INFO, ACTION_KINDS, ACTION_LOADERS, ActionKind, ActionResult } from '@/lib/actions';
 import { colors } from '@/theme';
 
 type Results = Partial<Record<ActionKind, ActionResult | Error>>;
@@ -98,23 +98,6 @@ export default function ActionRequired() {
           {order.map((k) => (
             <ActionCard key={k} kind={k} result={results[k]} onPress={() => router.push({ pathname: '/actions/[kind]', params: { kind: k } })} />
           ))}
-
-          <SectionHeader title="Coming soon" />
-          {COMING_SOON.map((c) => (
-            <Card key={c.title} style={{ opacity: 0.55 }}>
-              <Row>
-                <IconBadge icon={c.icon} tone="slate" />
-                <AppText weight="600" style={{ flex: 1 }}>
-                  {c.title}
-                </AppText>
-                <View style={[styles.soon]}>
-                  <AppText variant="caption" weight="600" color="slate">
-                    Coming soon
-                  </AppText>
-                </View>
-              </Row>
-            </Card>
-          ))}
         </ScrollView>
       )}
     </SafeAreaView>
@@ -125,5 +108,4 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, paddingTop: 8, paddingBottom: 40, gap: 12 },
   count: { minWidth: 32, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, alignItems: 'center' },
-  soon: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: colors.slateSoft },
 });

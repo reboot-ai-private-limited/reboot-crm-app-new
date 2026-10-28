@@ -3,7 +3,7 @@ import { dealPayload } from './deal';
 import { getLocation } from './location';
 
 // Mirrors backend ILead + lifecycle (backend/docs/05-LEAD-LIFECYCLE.md).
-export const LEAD_STATUSES = ['FRESH', 'CONTACTED', 'MEETING', 'FOLLOW_UP', 'PROPOSAL', 'DEAL_CLOSED', 'NOT_INTERESTED', 'INVALID'] as const;
+export const LEAD_STATUSES = ['FRESH', 'CONTACTED', 'NO_RESPONSE', 'MEETING', 'FOLLOW_UP', 'PROPOSAL', 'DEAL_CLOSED', 'NOT_INTERESTED', 'INVALID'] as const;
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
 export type LeadPriority = 'HOT' | 'WARM' | 'COLD';
 
@@ -69,6 +69,7 @@ export type LeadPage = { data: Lead[]; total: number };
 export const STATUS_LABEL: Record<LeadStatus, string> = {
   FRESH: 'Fresh',
   CONTACTED: 'Contacted',
+  NO_RESPONSE: 'No response',
   MEETING: 'Meeting',
   FOLLOW_UP: 'Follow-up',
   PROPOSAL: 'Proposal',
@@ -80,6 +81,7 @@ export const STATUS_LABEL: Record<LeadStatus, string> = {
 export const STATUS_HINT: Record<LeadStatus, string> = {
   FRESH: 'New lead, not contacted yet',
   CONTACTED: 'Spoke to them, no meeting yet',
+  NO_RESPONSE: 'Tried to reach them, no answer yet',
   MEETING: 'Meeting scheduled',
   FOLLOW_UP: 'Meeting done, deal pending',
   PROPOSAL: 'Proposal generated or sent',

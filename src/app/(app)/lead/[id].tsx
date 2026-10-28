@@ -56,6 +56,7 @@ import {
 import {
   cancelMeeting,
   fetchMeetings,
+  isOfflineMeeting,
   markMeetingStatus,
   Meeting,
   shouldPoll,
@@ -191,6 +192,8 @@ export default function LeadDetails() {
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [notHappenedNote, setNotHappenedNote] = useState("");
+  // A field meeting is marked Done with a note and the GPS position (the only proof it took place).
+  const [doneNote, setDoneNote] = useState("");
   const [allowed, setAllowed] = useState<LeadStatus[]>([]);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -265,6 +268,11 @@ export default function LeadDetails() {
     setNow(new Date().getTime());
     setSheet(k);
   };
+
+  // A field meeting always needs a note to be marked Done. An admin correcting an outcome that was already
+  // recorded does not need to be at the venue, so no location is taken then.
+  const offlineDone = !!selectedMeeting && isOfflineMeeting(selectedMeeting);
+  const fieldDone = offlineDone && !(isAdmin && (selectedMeeting.status === "DONE" || selectedMeeting.status === "NOT_HAPPENED"));
 
   const run = async (fn: () => Promise<unknown>, done: string) => {
     setSaving(true);
@@ -681,6 +689,7 @@ export default function LeadDetails() {
                   }}
                   onMarkDone={(targetMeeting) => {
                     setSelectedMeeting(targetMeeting);
+                    setDoneNote("");
                     setSheetError("");
                     setSheet("markDone");
                   }}
@@ -1050,7 +1059,9 @@ export default function LeadDetails() {
         title="Cancel Meeting"
       >
         <AppText variant="caption" color="textMuted">
-          The Google Meet event will be removed and invitees will get a cancellation email. This cannot be undone.
+          {selectedMeeting && isOfflineMeeting(selectedMeeting)
+            ? "This field meeting will be cancelled. This cannot be undone."
+            : "The Google Meet event will be removed and invitees will get a cancellation email. This cannot be undone."}
         </AppText>
         <Field
           label="Reason (optional)"
@@ -1088,6 +1099,23 @@ export default function LeadDetails() {
             ? `Mark "${selectedMeeting.title}" as done? Only an admin can change it afterwards.`
             : "Mark this meeting as done? Only an admin can change it afterwards."}
         </AppText>
+        {offlineDone ? (
+          <>
+            <Field
+              label="What happened at the visit?"
+              placeholder="Who you met, what was agreed"
+              value={doneNote}
+              onChangeText={setDoneNote}
+              multiline
+              maxLength={1000}
+            />
+            {fieldDone ? (
+              <AppText variant="caption" color="textMuted">
+                Your current location is saved with this, as proof you were there.
+              </AppText>
+            ) : null}
+          </>
+        ) : null}
         {sheetError ? (
           <AppText variant="label" color="danger">
             {sheetError}
@@ -1097,9 +1125,15 @@ export default function LeadDetails() {
           label={saving ? "Saving…" : "Yes, mark done"}
           variant="success"
           loading={saving}
+          disabled={offlineDone && doneNote.trim().length < 2}
           onPress={() =>
             run(
-              () => markMeetingStatus(selectedMeeting!._id, { status: "DONE" }),
+              () =>
+                markMeetingStatus(selectedMeeting!._id, {
+                  status: "DONE",
+                  note: offlineDone ? doneNote.trim() : undefined,
+                  withLocation: fieldDone,
+                }),
               "Meeting marked as done",
             )
           }

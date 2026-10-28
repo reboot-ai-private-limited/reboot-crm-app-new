@@ -1,4 +1,6 @@
 import { api } from './api';
+import type { PaymentMethod } from './deal';
+import { getLocation } from './location';
 
 const PAGE_SIZE = 20;
 
@@ -108,6 +110,49 @@ export async function sendInvoice(id: string, channel: InvoiceChannel) {
   const { publicToken } = await api<{ publicToken: string }>(`/invoices/${id}/send`, { method: 'POST', body: { deliveryChannel: channel } });
   if (!WEB_URL) throw new Error('Invoice links need EXPO_PUBLIC_WEB_URL in the app settings.');
   return `${WEB_URL}/public/invoice/${publicToken}`;
+}
+
+// --- Edit customer, add a service, record a payment (the same three actions as the web Customer page) -------------------
+// The backend needs the phone's GPS position with each of them, like the web does.
+
+export type CustomerEdit = { contactName: string; businessName: string; mobile: string; email: string };
+
+/** PATCH /customers/:id. Employees can only change their own customers; the backend says so if not. */
+export async function updateCustomer(id: string, input: CustomerEdit) {
+  const location = await getLocation();
+  return api(`/customers/${id}`, {
+    method: 'PATCH',
+    body: { contactName: input.contactName.trim(), businessName: input.businessName.trim(), mobile: input.mobile.trim(), email: input.email.trim(), location },
+  });
+}
+
+export type ServiceAttach = { serviceId: string; agreedPrice: number; discount: number; taxType: 'NONE' | 'GST_18'; expiryDate: Date | null };
+
+/** POST /customers/:id/services. The backend creates the invoice for it a moment later. */
+export async function attachService(customerId: string, input: ServiceAttach) {
+  const location = await getLocation();
+  return api(`/customers/${customerId}/services`, {
+    method: 'POST',
+    body: {
+      serviceId: input.serviceId,
+      agreedPrice: input.agreedPrice,
+      ...(input.discount > 0 ? { discount: input.discount } : {}),
+      taxType: input.taxType,
+      ...(input.expiryDate ? { expiryDate: input.expiryDate.toISOString() } : {}),
+      location,
+    },
+  });
+}
+
+export type PaymentRecord = { amount: number; method: PaymentMethod; referenceId: string };
+
+/** POST /invoices/:id/payments. Manual payments only (no gateway). */
+export async function recordPayment(invoiceId: string, input: PaymentRecord) {
+  const location = await getLocation();
+  return api(`/invoices/${invoiceId}/payments`, {
+    method: 'POST',
+    body: { amount: input.amount, method: input.method, ...(input.referenceId.trim() ? { referenceId: input.referenceId.trim() } : {}), location },
+  });
 }
 
 export const rupees = (n?: number) => `₹${(n ?? 0).toLocaleString('en-IN')}`;

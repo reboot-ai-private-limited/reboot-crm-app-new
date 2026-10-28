@@ -5,6 +5,7 @@ import { ColorName } from '@/theme';
 export const STATUS_TONE: Record<LeadStatus, [ColorName, ColorName]> = {
   FRESH: ['primary', 'primarySoft'],
   CONTACTED: ['purple', 'purpleSoft'],
+  NO_RESPONSE: ['warning', 'warningSoft'],
   MEETING: ['warning', 'warningSoft'],
   FOLLOW_UP: ['warning', 'warningSoft'],
   PROPOSAL: ['purple', 'purpleSoft'],
