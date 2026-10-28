@@ -1,7 +1,10 @@
 import { Stack } from 'expo-router';
 
-// Tabs, plus the lead screens pushed on top of them.
+import { usePushNotifications } from '@/lib/push';
+
+// Tabs, plus the lead screens pushed on top of them. Signed in only, so push registration lives here.
 export default function AppLayout() {
+  usePushNotifications();
   return (
     <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right', animationDuration: 250 }}>
       <Stack.Screen name="(tabs)" />
@@ -16,6 +19,8 @@ export default function AppLayout() {
       <Stack.Screen name="actions/[kind]" />
       <Stack.Screen name="customers/index" />
       <Stack.Screen name="customers/[id]" />
+      <Stack.Screen name="all-meetings" />
+      <Stack.Screen name="proposals" />
     </Stack>
   );
 }

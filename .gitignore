@@ -33,6 +33,9 @@ yarn-error.*
 # local env files
 .env*.local
 
+# Firebase config (push notifications): kept out of git, copy it in from the Firebase console
+google-services.json
+
 # typescript
 *.tsbuildinfo
 

@@ -2,6 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { api, setSessionExpiredHandler, TOKEN_KEYS } from '@/lib/api';
+import { unregisterPush } from '@/lib/push';
 
 export type Role = 'Admin' | 'BusinessAdvisor' | 'FieldSales';
 
@@ -66,6 +67,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
+    // First, while still signed in: stop this phone getting the person's pushes.
+    await unregisterPush();
     const refreshToken = await SecureStore.getItemAsync(TOKEN_KEYS.refresh);
     await api('/auth/logout', { method: 'POST', body: { refreshToken } }).catch(() => undefined);
     await Promise.all([SESSION_KEY, TOKEN_KEYS.access, TOKEN_KEYS.refresh].map((k) => SecureStore.deleteItemAsync(k)));
