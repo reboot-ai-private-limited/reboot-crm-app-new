@@ -10,6 +10,7 @@ import { rupees } from '@/lib/customers';
 import { countMyLeads, fetchFollowUps, Lead } from '@/lib/leads';
 import { DashboardRow, fetchMyMonth } from '@/lib/reporting';
 import { fetchMeetings, Meeting, meetingStatusLabel, meetingStatusTone } from '@/lib/meetings';
+import { countProposals } from '@/lib/proposals';
 import { useAuth } from '@/store/auth';
 import { ColorName, colors } from '@/theme';
 
@@ -121,6 +122,7 @@ export default function Home() {
   const [followUps, setFollowUps] = useState<Lead[]>([]);
   const [todayMeetings, setTodayMeetings] = useState<Meeting[]>([]);
   const [month, setMonth] = useState<DashboardRow | null>(null);
+  const [proposals, setProposals] = useState<{ total: number; sent: number; accepted: number } | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -134,17 +136,19 @@ export default function Home() {
       const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
 
       // Each block loads on its own, so one failing API doesn't blank the whole screen.
-      const [c, f, m, meets] = await Promise.allSettled([
+      const [c, f, m, meets, props] = await Promise.allSettled([
         Promise.all([countMyLeads(), countMyLeads('PROPOSAL'), countMyLeads('DEAL_CLOSED')]),
         fetchFollowUps(false),
         fetchMyMonth(session.mobile),
         fetchMeetings({ mine: true, from: startOfDay, to: endOfDay }),
+        countProposals(),
       ]);
       if (c.status === 'fulfilled') setCounts({ leads: c.value[0], proposals: c.value[1], deals: c.value[2] });
       if (f.status === 'fulfilled') setFollowUps(f.value);
       if (m.status === 'fulfilled') setMonth(m.value);
       if (meets.status === 'fulfilled') setTodayMeetings(meets.value);
-      const failed = [c, f, m, meets].find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
+      if (props.status === 'fulfilled') setProposals(props.value);
+      const failed = [c, f, m, meets, props].find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
       setError(failed ? (failed.reason as Error).message : '');
       setLoaded(true);
       setRefreshing(false);
@@ -284,6 +288,23 @@ export default function Home() {
                 ) : null}
               </>
             )}
+
+            {/* My proposals: counts, the list is one tap away */}
+            <SectionHeader title="My proposals" link="See all" onPress={() => router.push('/proposals')} />
+            <Card onPress={() => router.push('/proposals')}>
+              <Row>
+                <IconBadge icon="file" tone="purple" />
+                <View style={{ flex: 1 }}>
+                  <AppText variant="section">
+                    {proposals ? `${proposals.total} ${proposals.total === 1 ? 'proposal' : 'proposals'}` : '–'}
+                  </AppText>
+                  <AppText variant="label" color="textMuted" weight="400">
+                    {proposals ? `${proposals.sent} sent · ${proposals.accepted} accepted` : 'Could not load'}
+                  </AppText>
+                </View>
+                <Icon name="chevR" size={16} color="textSubtle" />
+              </Row>
+            </Card>
           </>
         )}
       </ScrollView>

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { Card, Field, Header, Row } from '@/components/ui/layout';
 import { Sheet } from '@/components/ui/Sheet';
+import { EmailDocumentForm } from '@/components/EmailDocumentForm';
 import { fetchLead, Lead } from '@/lib/leads';
 import {
   fetchProposals,
@@ -17,21 +18,13 @@ import {
   htmlToText,
   OTHER_SERVICE,
   Proposal,
+  PROPOSAL_STATUS_TONE as STATUS_TONE,
   ProposalSection,
-  ProposalStatus,
   proposalUrl,
   saveProposal,
   ServiceOption,
 } from '@/lib/proposals';
 import { ColorName, colors } from '@/theme';
-
-const STATUS_TONE: Record<ProposalStatus, [ColorName, ColorName]> = {
-  DRAFT: ['slate', 'slateSoft'],
-  GENERATED: ['primary', 'primarySoft'],
-  SENT: ['purple', 'purpleSoft'],
-  ACCEPTED: ['success', 'successSoft'],
-  REJECTED: ['danger', 'dangerSoft'],
-};
 
 const dateText = (iso?: string | null) => {
   if (!iso) return null;
@@ -49,7 +42,7 @@ function Pill({ label, tone }: { label: string; tone: [ColorName, ColorName] }) 
   );
 }
 
-function ProposalCard({ p, now, onError }: { p: Proposal; now: number; onError: (m: string) => void }) {
+function ProposalCard({ p, now, onError, onEmail }: { p: Proposal; now: number; onError: (m: string) => void; onEmail: () => void }) {
   const preview = proposalUrl(p.publicToken, true);
   const link = proposalUrl(p.publicToken);
   const created = dateText(p.createdAt);
@@ -104,6 +97,7 @@ function ProposalCard({ p, now, onError }: { p: Proposal; now: number; onError: 
           />
         </Row>
       ) : null}
+      {link ? <Button label="Email proposal" icon="mail" variant="outline" small onPress={onEmail} /> : null}
     </Card>
   );
 }
@@ -125,6 +119,8 @@ export default function LeadProposals() {
   const [sections, setSections] = useState<ProposalSection[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [sheetError, setSheetError] = useState('');
+  // "Email this proposal" sheet: which proposal it is for (null = closed).
+  const [emailProposalId, setEmailProposalId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -250,7 +246,7 @@ export default function LeadProposals() {
             </AppText>
           </View>
         ) : (
-          proposals.map((p) => <ProposalCard key={p._id} p={p} now={now} onError={flash} />)
+          proposals.map((p) => <ProposalCard key={p._id} p={p} now={now} onError={flash} onEmail={() => setEmailProposalId(p._id)} />)
         )}
       </ScrollView>
 
@@ -262,6 +258,21 @@ export default function LeadProposals() {
           </AppText>
         </View>
       ) : null}
+
+      <Sheet visible={!!emailProposalId} onClose={() => setEmailProposalId(null)} title="Email this proposal">
+        {emailProposalId ? (
+          <EmailDocumentForm
+            key={emailProposalId}
+            kind="proposal"
+            id={emailProposalId}
+            defaultTo={lead?.email ?? ''}
+            onSent={(text) => {
+              setEmailProposalId(null);
+              flash(text);
+            }}
+          />
+        ) : null}
+      </Sheet>
 
       <Sheet visible={open} onClose={() => setOpen(false)} title={sections ? 'Preview proposal' : 'New proposal'} fullHeight>
         {sections ? (

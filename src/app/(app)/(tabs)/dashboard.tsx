@@ -245,14 +245,14 @@ export default function Dashboard() {
             <View style={{ gap: 10, opacity: periodLoading ? 0.5 : 1 }}>
               <View style={styles.grid}>
                 <Stat label="Leads" value={data.period ? sum(periodRows, 'totalLeads') : '–'} icon="users" tone="primary" onPress={() => router.push('/leads')} />
-                <Stat label="Proposals" value={data.period ? sum(periodRows, 'proposals') : '–'} icon="file" tone="purple" onPress={() => router.push('/leads')} />
+                <Stat label="Proposals" value={data.period ? sum(periodRows, 'proposals') : '–'} icon="file" tone="purple" onPress={() => router.push('/proposals')} />
               </View>
               <View style={styles.grid}>
                 <Stat label="In meeting" value={data.inMeeting ?? '–'} icon="calendar" tone="warning" onPress={() => router.push('/leads')} />
                 <Stat label="Deals closed" value={data.period ? sum(periodRows, 'dealsClosed') : '–'} icon="check" tone="success" onPress={() => router.push('/leads')} />
               </View>
               <View style={styles.grid}>
-                <Stat label="Meetings today" value={data.meetingsToday ?? '–'} icon="video" tone="warning" onPress={() => router.push('/meetings')} />
+                <Stat label="Meetings today" value={data.meetingsToday ?? '–'} icon="video" tone="warning" onPress={() => router.push('/all-meetings')} />
               </View>
             </View>
 

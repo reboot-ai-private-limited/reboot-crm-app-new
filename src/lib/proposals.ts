@@ -1,7 +1,18 @@
+import { ColorName } from '@/theme';
+
 import { api } from './api';
 import { getLocation } from './location';
 
 export type ProposalStatus = 'DRAFT' | 'GENERATED' | 'SENT' | 'ACCEPTED' | 'REJECTED';
+
+/** [text, background] colours of a status pill. */
+export const PROPOSAL_STATUS_TONE: Record<ProposalStatus, [ColorName, ColorName]> = {
+  DRAFT: ['slate', 'slateSoft'],
+  GENERATED: ['primary', 'primarySoft'],
+  SENT: ['purple', 'purpleSoft'],
+  ACCEPTED: ['success', 'successSoft'],
+  REJECTED: ['danger', 'dangerSoft'],
+};
 
 export type Proposal = {
   _id: string;
@@ -38,6 +49,43 @@ export function proposalUrl(token?: string, preview = false) {
 export function fetchProposals(leadId: string) {
   return api<Proposal[]>(`/proposals/entity/${leadId}`);
 }
+
+type Named = { _id: string; companyName?: string; businessName?: string; contactName?: string; fullName?: string } | string | null;
+
+/** A row of GET /proposals: no body (aiContent), with the lead/customer and sender populated. */
+export type ProposalRow = Omit<Proposal, 'aiContent'> & {
+  leadId?: Named;
+  customerId?: Named;
+  senderId?: Named;
+  pricing?: { serviceName: string; price: number; frequency: string }[];
+};
+
+export type ProposalPage = { data: ProposalRow[]; meta: { total: number; page: number; limit: number; totalPages: number } };
+
+/** Admin: every proposal; others: the ones they sent. Newest first. */
+export function fetchAllProposals(opts: { page: number; status?: ProposalStatus; limit?: number }) {
+  return api<ProposalPage>('/proposals', { query: { page: opts.page, limit: opts.limit ?? 20, status: opts.status } });
+}
+
+/** How many proposals there are in total, sent and accepted (Home card). */
+export async function countProposals() {
+  const count = (status?: ProposalStatus) => fetchAllProposals({ page: 1, limit: 1, status }).then((r) => r.meta.total);
+  const [total, sent, accepted] = await Promise.all([count(), count('SENT'), count('ACCEPTED')]);
+  return { total, sent, accepted };
+}
+
+/** "Acme Pvt Ltd" from a populated lead or customer; '' when not populated. */
+export function proposalFor(p: ProposalRow) {
+  const e = (p.leadId && typeof p.leadId === 'object' ? p.leadId : null) ?? (p.customerId && typeof p.customerId === 'object' ? p.customerId : null);
+  return e ? e.companyName || e.businessName || e.contactName || '' : '';
+}
+
+export const proposalLeadId = (p: ProposalRow) => (typeof p.leadId === 'string' ? p.leadId : p.leadId?._id);
+
+export const proposalSender = (p: ProposalRow) => (p.senderId && typeof p.senderId === 'object' ? p.senderId.fullName ?? '' : '');
+
+/** Total of the price lines, or null when the proposal has none (prices usually live in the proposal text). */
+export const proposalAmount = (p: ProposalRow) => (p.pricing?.length ? p.pricing.reduce((s, l) => s + (l.price || 0), 0) : null);
 
 /** Active services only: inactive ones are hidden from every dropdown. */
 export function fetchServices() {
