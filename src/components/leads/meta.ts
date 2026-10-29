@@ -31,6 +31,9 @@ const EVENT: Record<string, { label: string; icon: IconName; tone: ColorName }> 
   FOLLOW_UP_SCHEDULED: { label: 'Follow-up scheduled', icon: 'clock', tone: 'warning' },
   MARKED_LOST: { label: 'Marked as lost', icon: 'x', tone: 'slate' },
   MARKED_INVALID: { label: 'Marked as invalid', icon: 'alert', tone: 'danger' },
+  // An Admin moved the record on the web: the lead was a job seeker (→ Candidates), or came back from Candidates.
+  MOVED_TO_CANDIDATES: { label: 'Moved to Candidates', icon: 'userx', tone: 'slate' },
+  MOVED_FROM_CANDIDATES: { label: 'Moved back from Candidates', icon: 'user', tone: 'primary' },
   STATUS_CHANGED: { label: 'Status changed', icon: 'refresh', tone: 'primary' },
   DETAILS_UPDATED: { label: 'Details updated', icon: 'edit', tone: 'slate' },
   PROPOSAL_GENERATED: { label: 'Proposal generated', icon: 'file', tone: 'purple' },
