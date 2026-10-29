@@ -16,7 +16,6 @@ import {
   eventDetail,
   PRIORITY_TONE,
   statusTone,
-  timeAgo,
 } from "@/components/leads/meta";
 import { AppText } from "@/components/ui/AppText";
 import { Button } from "@/components/ui/Button";
@@ -76,6 +75,18 @@ type SheetKind =
   | "markDone"
   | "notHappened"
   | null;
+
+/** Activity entries shown at first, and added per "Read more". */
+const ACTIVITY_PAGE = 10;
+
+/** When an activity happened, as on the web: "Oct 29, 3:45 PM". */
+const activityTime = (iso: string) =>
+  new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 
 const needsDetails = (s: LeadStatus) =>
   REASON_REQUIRED.includes(s) || s === "DEAL_CLOSED";
@@ -188,6 +199,8 @@ export default function LeadDetails() {
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
+  // Like the web: the latest ACTIVITY_PAGE entries, and "Read more" adds the next ones.
+  const [activityShown, setActivityShown] = useState(ACTIVITY_PAGE);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [cancelReason, setCancelReason] = useState("");
@@ -602,15 +615,6 @@ export default function LeadDetails() {
         {/* Actions */}
         {canChange ? (
           <Row gap={10}>
-            {!closed ? (
-              <Button
-                label={nextAction ? "Follow-up" : "Add follow-up"}
-                icon="clock"
-                variant="outline"
-                flex
-                onPress={() => openSheet("nextAction")}
-              />
-            ) : null}
             <Button
               label="Change status"
               icon="refresh"
@@ -719,11 +723,11 @@ export default function LeadDetails() {
               No activity yet.
             </AppText>
           ) : (
-            activities.map((a, i) => {
+            activities.slice(0, activityShown).map((a, i, shown) => {
               const m = activityMeta(a);
               const detail = eventDetail(a);
               const map = mapUrl(a.location);
-              const last = i === activities.length - 1;
+              const last = i === shown.length - 1;
               return (
                 <Row key={a._id} gap={12} style={{ alignItems: "flex-start" }}>
                   <View style={{ alignItems: "center" }}>
@@ -737,20 +741,25 @@ export default function LeadDetails() {
                   <View
                     style={{ flex: 1, paddingBottom: last ? 0 : 16, gap: 2 }}
                   >
-                    <AppText weight="600" style={{ fontSize: 14 }}>
-                      {m.label}
-                    </AppText>
+                    <Row gap={8} style={{ alignItems: "flex-start" }}>
+                      <AppText weight="600" style={{ fontSize: 14, flex: 1 }}>
+                        {m.label}
+                      </AppText>
+                      <AppText variant="caption" color="textSubtle" style={{ marginTop: 2 }}>
+                        {activityTime(a.createdAt)}
+                      </AppText>
+                    </Row>
                     {detail ? (
                       <AppText variant="label" color="textMuted" weight="400">
                         {detail}
                       </AppText>
                     ) : null}
                     <Row gap={8}>
-                      <AppText variant="caption" color="textSubtle">
-                        {[a.actorId?.fullName, timeAgo(a.createdAt)]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </AppText>
+                      {a.actorId?.fullName ? (
+                        <AppText variant="caption" color="textSubtle">
+                          {a.actorId.fullName}
+                        </AppText>
+                      ) : null}
                       {map ? (
                         <Pressable
                           onPress={() => Linking.openURL(map)}
@@ -770,6 +779,30 @@ export default function LeadDetails() {
               );
             })
           )}
+          {activities.length > ACTIVITY_PAGE ? (
+            <Row gap={16} style={{ justifyContent: "center", paddingTop: 14 }}>
+              {activityShown < activities.length ? (
+                <AppText
+                  variant="label"
+                  color="primary"
+                  weight="600"
+                  onPress={() => setActivityShown((n) => n + ACTIVITY_PAGE)}
+                >
+                  Read more ({activities.length - activityShown} more)
+                </AppText>
+              ) : null}
+              {activityShown > ACTIVITY_PAGE ? (
+                <AppText
+                  variant="label"
+                  color="textMuted"
+                  weight="600"
+                  onPress={() => setActivityShown(ACTIVITY_PAGE)}
+                >
+                  Show less
+                </AppText>
+              ) : null}
+            </Row>
+          ) : null}
         </Card>
       </ScrollView>
 

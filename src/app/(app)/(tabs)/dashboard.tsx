@@ -7,7 +7,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Icon, IconName } from '@/components/ui/Icon';
 import { Card, FilterChips, GradientCard, IconBadge, Row, SectionHeader } from '@/components/ui/layout';
 import { rupees } from '@/lib/customers';
-import { countAllLeads, fetchFollowUps, Lead } from '@/lib/leads';
+import { fetchFollowUps, Lead } from '@/lib/leads';
 import { DashboardRow, fetchDashboardRows, fetchMonthRows, Range, RANGES, rangeDates } from '@/lib/reporting';
 import { fetchMeetings } from '@/lib/meetings';
 import { useAuth } from '@/store/auth';
@@ -28,7 +28,12 @@ function daysLeftInMonth() {
   return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1;
 }
 
-const assigneeName = (l: Lead) => (typeof l.assignedTo === 'object' && l.assignedTo?.fullName) || 'Unassigned';
+/** "Rahul Kumar Sharma" → "Rahul S.": first name and the last name's initial. */
+const shortName = (full: string) => {
+  const parts = full.trim().split(/\s+/);
+  return parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.` : parts[0];
+};
+const assigneeName = (l: Lead) => (typeof l.assignedTo === 'object' && l.assignedTo?.fullName ? shortName(l.assignedTo.fullName) : 'Unassigned');
 const sum = (rows: DashboardRow[], k: keyof DashboardRow) => rows.reduce((n, r) => n + (Number(r[k]) || 0), 0);
 
 /** Short clock time ("9:05 AM"), or a dash when there was no activity. */
@@ -49,7 +54,8 @@ const COLS = [
   { key: 'first', label: 'First', w: 84 },
   { key: 'last', label: 'Last', w: 84 },
 ] as const;
-const NAME_W = 140;
+// Fits a short name ("Rahul S."); a longer first name is cut with "…".
+const NAME_W = 100;
 const cells = (r: DashboardRow): Record<(typeof COLS)[number]['key'], string> => ({
   att: r.attendanceText || '0',
   leads: String(r.totalLeads),
@@ -62,7 +68,6 @@ const cells = (r: DashboardRow): Record<(typeof COLS)[number]['key'], string> =>
 });
 
 type Data = {
-  inMeeting: number;
   meetingsToday: number;
   followUps: Lead[];
   /** Activity for the selected period. */
@@ -112,8 +117,7 @@ export default function Dashboard() {
     const endOfTodayIso = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
 
     // Each block loads on its own, so one failing API doesn't blank the whole screen.
-    const [meeting, followUps, period, month, meetsToday] = await Promise.allSettled([
-      countAllLeads('MEETING'),
+    const [followUps, period, month, meetsToday] = await Promise.allSettled([
       fetchFollowUps(true),
       fetchDashboardRows(start, end),
       needMonth ? fetchMonthRows() : Promise.resolve(null),
@@ -121,7 +125,6 @@ export default function Dashboard() {
     ]);
     if (rangeRef.current !== r) return; // the user picked another period meanwhile
     const next: Partial<Data> = {};
-    if (meeting.status === 'fulfilled') next.inMeeting = meeting.value;
     if (followUps.status === 'fulfilled') next.followUps = followUps.value;
     if (period.status === 'fulfilled') {
       next.period = period.value;
@@ -130,7 +133,7 @@ export default function Dashboard() {
     if (month.status === 'fulfilled' && month.value) next.month = month.value;
     if (meetsToday.status === 'fulfilled') next.meetingsToday = meetsToday.value.length;
     setData((prev) => ({ ...prev, ...next }));
-    const failed = [meeting, followUps, period, month, meetsToday].find((x) => x.status === 'rejected') as PromiseRejectedResult | undefined;
+    const failed = [followUps, period, month, meetsToday].find((x) => x.status === 'rejected') as PromiseRejectedResult | undefined;
     setError(failed ? (failed.reason as Error).message : '');
     setLoaded(true);
     setRefreshing(false);
@@ -156,9 +159,10 @@ export default function Dashboard() {
   const todayStart = startOfToday();
   const followUps = [...(data.followUps ?? [])].sort((a, b) => at(a) - at(b));
   const overdue = followUps.filter((l) => at(l) < todayStart);
+  const dueToday = data.followUps ? followUps.filter((l) => at(l) >= todayStart && at(l) < todayStart + 24 * 60 * 60 * 1000).length : undefined;
 
-  // Team = active non-admin employees.
-  const team = (data.month ?? []).filter((r) => r.role !== 'Admin' && r.status === 'Active');
+  // Team = every active employee, Admins included (an Admin can have a target too).
+  const team = (data.month ?? []).filter((r) => r.status === 'Active');
   const periodRows = (data.period ?? []).filter((r) => r.role !== 'Admin');
   // Active people for the table (Admins included), most deals first.
   const tableRows = (data.period ?? [])
@@ -248,7 +252,7 @@ export default function Dashboard() {
                 <Stat label="Proposals" value={data.period ? sum(periodRows, 'proposals') : '–'} icon="file" tone="purple" onPress={() => router.push('/proposals')} />
               </View>
               <View style={styles.grid}>
-                <Stat label="In meeting" value={data.inMeeting ?? '–'} icon="calendar" tone="warning" onPress={() => router.push('/leads')} />
+                <Stat label="Follow-ups today" value={dueToday ?? '–'} icon="phone" tone="warning" onPress={() => router.push({ pathname: '/followups', params: { filter: 'today' } })} />
                 <Stat label="Deals closed" value={data.period ? sum(periodRows, 'dealsClosed') : '–'} icon="check" tone="success" onPress={() => router.push('/leads')} />
               </View>
               <View style={styles.grid}>
@@ -283,7 +287,7 @@ export default function Dashboard() {
                           <View key={r.employeeId} style={[styles.tr, i > 0 && styles.divider]}>
                             <Row gap={8} style={{ width: NAME_W }}>
                               <AppText weight="600" numberOfLines={1} style={{ flex: 1 }}>
-                                {r.employeeName}{r.role === 'Admin' ? ' (Admin)' : ''}
+                                {shortName(r.employeeName)}
                               </AppText>
                             </Row>
                             {COLS.map((col) => (

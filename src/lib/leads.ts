@@ -196,6 +196,11 @@ export function updateLead(id: string, input: LeadInput) {
   return api<{ lead: Lead }>(`/leads/${id}`, { method: 'PATCH', body: { ...clean(input), website: (input.website ?? '').trim() } });
 }
 
+/** Takes a pool lead: an empty PATCH assigns an unassigned lead to the caller (and logs "Assigned"). Fails if someone claimed it first. */
+export function claimLead(id: string) {
+  return api<{ lead: Lead }>(`/leads/${id}`, { method: 'PATCH', body: {} });
+}
+
 export function addNote(id: string, note: string) {
   return api(`/leads/${id}/notes`, { method: 'POST', body: { note: note.trim() } });
 }

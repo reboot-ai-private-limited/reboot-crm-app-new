@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconName } from '@/components/ui/Icon';
 import { AnimatedTabIcon, TabButton } from '@/components/ui/TabBarParts';
@@ -20,6 +21,7 @@ const hidden = { tabBarItemStyle: { display: 'none' as const }, tabBarButton: ()
 //   Admin:    Dashboard · Leads · Team · Action · Profile   (Admin alerts are a card on the Action tab)
 export default function TabsLayout() {
   const { isAdmin } = useAuth();
+  const insets = useSafeAreaInsets();
   const emp = isAdmin ? hidden : {};
   const adm = isAdmin ? {} : hidden;
   // Unread alerts: the number on the Alerts tab (employees) or on the Action tab (Admin).
@@ -35,7 +37,8 @@ export default function TabsLayout() {
         tabBarButton: (props) => <TabButton {...props} />,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSubtle,
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, height: 64, paddingTop: 6 },
+        // Grow by the bottom inset so the bar sits above the system navigation bar instead of under it.
+        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, height: 64 + insets.bottom, paddingTop: 6, paddingBottom: insets.bottom },
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600', marginTop: 2 },
       }}>
       <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: tab('home'), ...emp }} />

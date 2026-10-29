@@ -10,7 +10,7 @@ import { Avatar, Card, Field, FilterChips, Header, IconButton, Row } from '@/com
 import { FilterOption, MultiSelectFilter } from '@/components/ui/MultiSelectFilter';
 import { Sheet } from '@/components/ui/Sheet';
 import { PRIORITY_TONE, statusTone } from '@/components/leads/meta';
-import { fetchAllLeads, Lead, LEAD_STATUSES, reassignLeads, statusLabel, titleCase } from '@/lib/leads';
+import { claimLead, fetchAllLeads, Lead, LEAD_STATUSES, reassignLeads, statusLabel, titleCase } from '@/lib/leads';
 import { dialDigits } from '@/lib/phone';
 import { EmployeeOption, fetchEmployees } from '@/lib/reporting';
 import { useAuth } from '@/store/auth';
@@ -46,9 +46,9 @@ const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', BusinessAdvisor: 'B
 
 /**
  * `now` is captured when the list loads (render must stay pure). In selection mode (Admin) a tick circle shows first and
- * `owner` (Admin → All leads) names who holds the lead.
+ * `owner` (Admin → All leads) names who holds the lead. `onClaim` (Pool) adds a Claim lead button.
  */
-function LeadRow({ lead, now, onPress, onLongPress, selecting, selected, owner }: { lead: Lead; now: number; onPress: () => void; onLongPress?: () => void; selecting?: boolean; selected?: boolean; owner?: string }) {
+function LeadRow({ lead, now, onPress, onLongPress, selecting, selected, owner, onClaim, claiming }: { lead: Lead; now: number; onPress: () => void; onLongPress?: () => void; selecting?: boolean; selected?: boolean; owner?: string; onClaim?: () => void; claiming?: boolean }) {
   const [fg, bg] = statusTone(lead.status);
   const name = lead.companyName || lead.contactName || 'Unnamed lead';
   const sub = [lead.contactName, titleCase(lead.city), owner ? `Owner: ${owner}` : ''].filter(Boolean).join(' · ');
@@ -106,6 +106,7 @@ function LeadRow({ lead, now, onPress, onLongPress, selecting, selected, owner }
           </AppText>
         ) : null}
       </Row>
+      {onClaim ? <Button label={claiming ? 'Claiming…' : 'Claim lead'} icon="check" variant="soft" small loading={claiming} onPress={onClaim} /> : null}
     </Card>
   );
 }
@@ -150,6 +151,9 @@ export default function LeadsScreen() {
   const [saving, setSaving] = useState(false);
   const [sheetError, setSheetError] = useState('');
   const [notice, setNotice] = useState('');
+  const [noticeFailed, setNoticeFailed] = useState(false);
+  // Pool: the lead being claimed right now.
+  const [claimingId, setClaimingId] = useState<string | null>(null);
 
   // Debounce typing so we don't hit the API on every key.
   useEffect(() => {
@@ -298,12 +302,30 @@ export default function LeadsScreen() {
       const who = target === null ? 'the lead pool' : (employees.find((e) => e.id === target)?.fullName ?? 'the employee');
       setSheetOpen(false);
       stopSelecting();
+      setNoticeFailed(false);
       setNotice(`${count} ${count === 1 ? 'lead' : 'leads'} moved to ${who}`);
       await load('refresh');
     } catch (e) {
       setSheetError((e as Error).message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Pool: the lead becomes yours and leaves the pool list.
+  const claim = async (lead: Lead) => {
+    setClaimingId(lead._id);
+    try {
+      await claimLead(lead._id);
+      setAllLeads((prev) => prev.filter((l) => l._id !== lead._id));
+      setNoticeFailed(false);
+      setNotice(`${lead.companyName || lead.contactName || 'Lead'} claimed. It is now in My leads.`);
+    } catch (e) {
+      setNoticeFailed(true);
+      setNotice((e as Error).message);
+      load('refresh'); // someone else may have taken it
+    } finally {
+      setClaimingId(null);
     }
   };
 
@@ -320,9 +342,9 @@ export default function LeadsScreen() {
         }
       />
       {notice ? (
-        <View style={styles.notice}>
-          <Icon name="check" size={16} color="success" />
-          <AppText variant="label" color="success" weight="600" style={{ flex: 1 }}>
+        <View style={[styles.notice, noticeFailed ? { backgroundColor: colors.dangerSoft } : null]}>
+          <Icon name={noticeFailed ? 'alert' : 'check'} size={16} color={noticeFailed ? 'danger' : 'success'} />
+          <AppText variant="label" color={noticeFailed ? 'danger' : 'success'} weight="600" style={{ flex: 1 }}>
             {notice}
           </AppText>
         </View>
@@ -346,7 +368,7 @@ export default function LeadsScreen() {
         <FlatList
           data={leads}
           keyExtractor={(l) => l._id}
-          extraData={selected}
+          extraData={[selected, claimingId]}
           renderItem={({ item }) => (
             <LeadRow
               lead={item}
@@ -356,6 +378,8 @@ export default function LeadsScreen() {
               owner={allScope ? (ownerOf(item)?.name ?? 'Not assigned') : undefined}
               onPress={() => (selecting ? toggle(item._id) : router.push({ pathname: '/lead/[id]', params: { id: item._id } }))}
               onLongPress={isAdmin && !selecting ? () => startWith(item._id) : undefined}
+              onClaim={pool && !selecting && !item.assignedTo ? () => claim(item) : undefined}
+              claiming={claimingId === item._id}
             />
           )}
           contentContainerStyle={styles.list}

@@ -1,5 +1,5 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
-import * as Notifications from 'expo-notifications';
+import type * as NotificationsModule from 'expo-notifications';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { useEffect } from 'react';
@@ -21,8 +21,14 @@ const CHANNEL_ID = 'default'; // the same id the backend sends and app.json sets
 
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
+// Loaded only where push works: in Expo Go merely importing expo-notifications crashes ("Cannot find native module
+// 'ExpoTopicSubscriptionModule'"), so the module is required here instead of imported at the top.
+const Notifications: typeof NotificationsModule | null =
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  isExpoGo || Platform.OS === 'web' ? null : (require('expo-notifications') as typeof NotificationsModule);
+
 // While the app is open, still show the banner (the Alerts list refreshes on its own).
-Notifications.setNotificationHandler({
+Notifications?.setNotificationHandler({
   handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
 });
 
@@ -33,7 +39,7 @@ async function sendToken(token: string) {
 
 /** Asks for permission (once) and registers this phone. Never throws: without push the app works as before. */
 export async function registerForPush() {
-  if (isExpoGo || Platform.OS === 'web') return;
+  if (!Notifications) return;
   try {
     // Android 13+: the channel must exist before asking, or the permission prompt never shows.
     if (Platform.OS === 'android') {
@@ -69,16 +75,17 @@ export async function unregisterPush() {
 type PushData = { notificationId?: string; leadId?: string; customerId?: string };
 
 /** The data the backend put on the push. On Android a tap on a background push can carry it on the FCM message instead. */
-function pushData(response: Notifications.NotificationResponse): PushData {
+function pushData(response: NotificationsModule.NotificationResponse): PushData {
   const { content, trigger } = response.notification.request;
   const remote = (trigger as { remoteMessage?: { data?: Record<string, string> } } | null)?.remoteMessage?.data;
   return { ...(remote ?? {}), ...((content.data ?? {}) as PushData) };
 }
 
-// The last tap handled, so a remount (or the hook's stored value) never opens the same screen twice.
+// The last tap handled, so a remount (or the stored last response) never opens the same screen twice.
 let handledTap: string | null = null;
 
-function openFromPush(response: Notifications.NotificationResponse) {
+function openFromPush(response: NotificationsModule.NotificationResponse) {
+  if (response.actionIdentifier !== Notifications?.DEFAULT_ACTION_IDENTIFIER) return;
   const id = response.notification.request.identifier;
   if (handledTap === id) return;
   handledTap = id;
@@ -92,24 +99,24 @@ function openFromPush(response: Notifications.NotificationResponse) {
 
 /** Mounted once while signed in: registers the phone, keeps the token fresh, and handles taps (also the tap that opened the app). */
 export function usePushNotifications() {
-  const lastResponse = Notifications.useLastNotificationResponse();
-
   useEffect(() => {
+    if (!Notifications) return;
     registerForPush();
-    if (isExpoGo) return;
+    // The tap that opened the app from a closed state.
+    const opened = Notifications.getLastNotificationResponse();
+    if (opened) openFromPush(opened);
     // FCM can replace the token at any time; send the new one.
     const tokenSub = Notifications.addPushTokenListener(({ data }) => {
       if (typeof data === 'string' && data) sendToken(data).catch(() => {});
     });
     // A push arrived while the app is open: update the badge now.
     const receivedSub = Notifications.addNotificationReceivedListener(() => refreshUnreadCount());
+    // A push tapped while the app is running.
+    const tapSub = Notifications.addNotificationResponseReceivedListener(openFromPush);
     return () => {
       tokenSub.remove();
       receivedSub.remove();
+      tapSub.remove();
     };
   }, []);
-
-  useEffect(() => {
-    if (lastResponse && lastResponse.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) openFromPush(lastResponse);
-  }, [lastResponse]);
 }
