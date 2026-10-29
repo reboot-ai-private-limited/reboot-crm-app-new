@@ -15,10 +15,13 @@ import {
   attendanceHours,
   DashboardRow,
   EmployeeActivity,
+  EmployeeDetails,
   fetchAttendance,
   fetchDashboardRows,
+  fetchEmployee,
   fetchEmployeeActivities,
   ROLE_LABEL,
+  statusTone,
   ymd,
 } from '@/lib/reporting';
 import { ColorName, colors } from '@/theme';
@@ -57,6 +60,83 @@ function Pager({ label, onPrev, onNext, nextDisabled }: { label: string; onPrev:
   );
 }
 
+/** Activity entries shown at first, and added per "Read more". */
+const ACTIVITY_PAGE = 10;
+
+const DOC_LABEL: Record<string, string> = {
+  GOVT_ID_FRONT: 'Govt ID (front)',
+  GOVT_ID_BACK: 'Govt ID (back)',
+  QUALIFICATION: 'Qualification',
+  EXPERIENCE: 'Experience / Payslip',
+  JOB_AGREEMENT: 'Job agreement',
+};
+const addressText = (a: { line1?: string; city?: string; state?: string; pinCode?: string }) => [a.line1, a.city, a.state, a.pinCode].filter(Boolean).join(', ');
+
+function Detail({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <View style={{ gap: 2 }}>
+      <AppText variant="caption" color="textSubtle">
+        {label}
+      </AppText>
+      <AppText variant="label" weight="500">
+        {value || '–'}
+      </AppText>
+    </View>
+  );
+}
+
+/** Onboarding details from the web Add Employee form. Read-only here: they are edited on the web. */
+function OnboardingCard({ e }: { e: EmployeeDetails }) {
+  const tone = statusTone(e.status);
+  const present = e.presentAddressSame === false && e.presentAddress ? addressText(e.presentAddress) : 'Same as permanent';
+  const docs = e.documents ?? [];
+  return (
+    <Card style={{ gap: 12 }}>
+      <Row style={{ justifyContent: 'space-between' }}>
+        <AppText variant="section">Details</AppText>
+        <View style={[styles.statusPill, { backgroundColor: colors[`${tone}Soft`] }]}>
+          <AppText variant="caption" weight="600" color={tone}>
+            {e.status}
+          </AppText>
+        </View>
+      </Row>
+      {e.status === 'Draft' ? (
+        <AppText variant="caption" color="warning">
+          Draft: cannot sign in yet. Finish the details and documents on the web, then press Submit & create ID pass.
+        </AppText>
+      ) : null}
+      <Detail label="Joined" value={e.joiningDate ? new Date(e.joiningDate).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null} />
+      <Detail label="Email" value={e.email} />
+      <Detail label="Alternate number" value={e.alternateMobile} />
+      <Detail label="Permanent address" value={addressText({ line1: e.addressLine1, city: e.city, state: e.state, pinCode: e.pinCode })} />
+      <Detail label="Present address" value={present} />
+      <Detail label="Guardian" value={[e.guardianName, e.guardianContact].filter(Boolean).join(' · ')} />
+      <Detail label="Reference" value={[e.refPersonName, e.refPersonContact].filter(Boolean).join(' · ')} />
+      <Detail label="Last qualification" value={e.lastQualification} />
+      <View style={{ gap: 6 }}>
+        <AppText variant="caption" color="textSubtle">
+          Documents
+        </AppText>
+        {docs.length ? (
+          docs.map((d) => (
+            <Pressable key={d.publicId} onPress={() => Linking.openURL(d.url)} style={styles.docRow}>
+              <Icon name="file" size={16} color="primary" />
+              <AppText variant="label" color="primary" numberOfLines={1} style={{ flex: 1 }}>
+                {(d.category && DOC_LABEL[d.category]) || d.name}
+              </AppText>
+              <Icon name="chevR" size={14} color="textSubtle" />
+            </Pressable>
+          ))
+        ) : (
+          <AppText variant="label" weight="500">
+            –
+          </AppText>
+        )}
+      </View>
+    </Card>
+  );
+}
+
 // Admin: one employee's month (numbers, target, attendance) and what they did on a given day.
 export default function TeamMember() {
   const router = useRouter();
@@ -80,6 +160,22 @@ export default function TeamMember() {
   // Bumping a key re-runs its effect (Retry / pull-to-refresh).
   const [monthKey, setMonthKey] = useState(0);
   const [dayKey, setDayKey] = useState(0);
+  // The day's activity shows the latest ACTIVITY_PAGE entries; "Read more" adds the next ones (same as the web).
+  const [activityShown, setActivityShown] = useState(ACTIVITY_PAGE);
+
+  // The onboarding details (address, guardian, documents...). A failure only hides the card: the month view still works.
+  const [details, setDetails] = useState<EmployeeDetails | null>(null);
+  useEffect(() => {
+    let stale = false;
+    fetchEmployee(id)
+      .then((e) => {
+        if (!stale) setDetails(e);
+      })
+      .catch(() => undefined);
+    return () => {
+      stale = true;
+    };
+  }, [id, monthKey]);
 
   // Month numbers + attendance. `stale` drops a response when the month changed meanwhile.
   useEffect(() => {
@@ -166,7 +262,9 @@ export default function TeamMember() {
   const name = row?.employeeName ?? p.name ?? 'Employee';
   const role = row?.role ?? p.role ?? '';
   const mobile = row?.mobile ?? p.mobile;
-  const inactive = (row?.status ?? p.status) === 'Inactive';
+  const status = details?.status ?? row?.status ?? p.status;
+  // Inactive, Terminated or Draft is shown next to the role; Active is the normal case.
+  const statusNote = status && status !== 'Active' ? status : null;
   const goal = row?.targetRevenue ?? 0;
   const pct = goal > 0 ? (row?.achievedAmount ?? 0) / goal : 0;
 
@@ -183,6 +281,7 @@ export default function TeamMember() {
   const pickDay = (d: Date) => {
     if (ymd(d) === ymd(day)) return;
     setDayLoading(true);
+    setActivityShown(ACTIVITY_PAGE);
     setDay(d);
   };
   const shiftDay = (n: number) => pickDay(new Date(day.getFullYear(), day.getMonth(), day.getDate() + n));
@@ -200,7 +299,7 @@ export default function TeamMember() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <Header title={name} subtitle={[ROLE_LABEL[role] ?? role, inactive ? 'Inactive' : null].filter(Boolean).join(' · ')} back />
+      <Header title={name} subtitle={[ROLE_LABEL[role] ?? role, statusNote].filter(Boolean).join(' · ')} back />
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={styles.content}
@@ -226,6 +325,8 @@ export default function TeamMember() {
             ) : null}
           </Row>
         </Card>
+
+        {details ? <OnboardingCard e={details} /> : null}
 
         {/* Month */}
         <Pager
@@ -365,7 +466,7 @@ export default function TeamMember() {
         ) : (
           // Keep the previous day's list on screen (dimmed) while the next one loads, so the page doesn't jump.
           <Card style={{ gap: 0, paddingVertical: 4, opacity: dayLoading ? 0.5 : 1 }}>
-            {activities.map((a, i) => {
+            {activities.slice(0, activityShown).map((a, i) => {
               const meta = activityMeta(a);
               const detail = eventDetail(a as unknown as Activity);
               const map = mapUrl(a.location);
@@ -406,6 +507,20 @@ export default function TeamMember() {
                 </Pressable>
               );
             })}
+            {activities.length > ACTIVITY_PAGE ? (
+              <Row gap={16} style={{ justifyContent: 'center', paddingVertical: 12 }}>
+                {activityShown < activities.length ? (
+                  <AppText variant="label" color="primary" weight="600" onPress={() => setActivityShown((n) => n + ACTIVITY_PAGE)}>
+                    Read more ({activities.length - activityShown} more)
+                  </AppText>
+                ) : null}
+                {activityShown > ACTIVITY_PAGE ? (
+                  <AppText variant="label" color="textMuted" weight="600" onPress={() => setActivityShown(ACTIVITY_PAGE)}>
+                    Show less
+                  </AppText>
+                ) : null}
+              </Row>
+            ) : null}
           </Card>
         )}
         </View>
@@ -419,6 +534,8 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingTop: 8, paddingBottom: 40, gap: 16 },
   pager: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 6 },
   pagerBtn: { padding: 6, borderRadius: 8 },
+  statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  docRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, backgroundColor: colors.primarySoft },
   stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   stat: { flexBasis: '47%', flexGrow: 1, gap: 4, padding: 12, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   attSummary: { paddingVertical: 10 },

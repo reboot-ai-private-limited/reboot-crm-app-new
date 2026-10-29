@@ -22,6 +22,7 @@ import {
   ProposalSection,
   proposalUrl,
   saveProposal,
+  sendProposalOnWhatsApp,
   ServiceOption,
 } from '@/lib/proposals';
 import { ColorName, colors } from '@/theme';
@@ -42,7 +43,23 @@ function Pill({ label, tone }: { label: string; tone: [ColorName, ColorName] }) 
   );
 }
 
-function ProposalCard({ p, now, onError, onEmail }: { p: Proposal; now: number; onError: (m: string) => void; onEmail: () => void }) {
+function ProposalCard({
+  p,
+  now,
+  onError,
+  onEmail,
+  onWhatsApp,
+  sending,
+  hasMobile,
+}: {
+  p: Proposal;
+  now: number;
+  onError: (m: string) => void;
+  onEmail: () => void;
+  onWhatsApp: () => void;
+  sending: boolean;
+  hasMobile: boolean;
+}) {
   const preview = proposalUrl(p.publicToken, true);
   const link = proposalUrl(p.publicToken);
   const created = dateText(p.createdAt);
@@ -97,7 +114,21 @@ function ProposalCard({ p, now, onError, onEmail }: { p: Proposal; now: number; 
           />
         </Row>
       ) : null}
-      {link ? <Button label="Email proposal" icon="mail" variant="outline" small onPress={onEmail} /> : null}
+      {p.publicToken ? (
+        <Row gap={10}>
+          <Button
+            label={hasMobile ? 'Send on WhatsApp' : 'No mobile number'}
+            icon="chat"
+            variant="outline"
+            small
+            flex
+            loading={sending}
+            disabled={!hasMobile || sending}
+            onPress={onWhatsApp}
+          />
+          {link ? <Button label="Email" icon="mail" variant="outline" small flex onPress={onEmail} /> : null}
+        </Row>
+      ) : null}
     </Card>
   );
 }
@@ -146,6 +177,21 @@ export default function LeadProposals() {
   const flash = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(''), 2500);
+  };
+
+  // WhatsApp send: the proposal is marked Sent only when WhatsApp accepted it; otherwise the server's reason is shown.
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const sendWhatsApp = async (proposalId: string) => {
+    setSendingId(proposalId);
+    try {
+      const result = await sendProposalOnWhatsApp(proposalId);
+      flash(result === 'DRY_RUN' ? 'WhatsApp sending is off on this server: marked sent, no message' : 'Proposal sent on WhatsApp');
+      await load();
+    } catch (e) {
+      flash((e as Error).message);
+    } finally {
+      setSendingId(null);
+    }
   };
 
   const openSheet = () => {
@@ -246,7 +292,18 @@ export default function LeadProposals() {
             </AppText>
           </View>
         ) : (
-          proposals.map((p) => <ProposalCard key={p._id} p={p} now={now} onError={flash} onEmail={() => setEmailProposalId(p._id)} />)
+          proposals.map((p) => (
+            <ProposalCard
+              key={p._id}
+              p={p}
+              now={now}
+              onError={flash}
+              onEmail={() => setEmailProposalId(p._id)}
+              onWhatsApp={() => sendWhatsApp(p._id)}
+              sending={sendingId === p._id}
+              hasMobile={!!lead.mobile}
+            />
+          ))
         )}
       </ScrollView>
 

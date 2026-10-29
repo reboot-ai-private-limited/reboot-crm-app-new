@@ -10,6 +10,7 @@ import { Card, FilterChips, Header, IconBadge, IconButton, Row } from '@/compone
 import {
   AppNotification,
   fetchNotifications,
+  isMeetingNotification,
   markAllNotificationsRead,
   markNotificationRead,
   notificationStyle,
@@ -23,15 +24,19 @@ const FILTERS = ['All', 'Unread'];
 function NotificationRow({ item, onPress }: { item: AppNotification; onPress: () => void }) {
   const style = notificationStyle[item.type] ?? { icon: 'bell' as const, tone: 'slate' as const };
   const unread = !item.readAt;
+  // Meeting notifications are always shown as important: amber card, meeting icon, bold text, an "Important" tag.
+  const meeting = isMeetingNotification(item.type);
   return (
-    <Card style={{ ...styles.row, ...(unread ? styles.rowUnread : null) }} onPress={onPress}>
-      <IconBadge icon={style.icon} tone={style.tone} />
+    <Card
+      style={{ ...styles.row, ...(unread ? styles.rowUnread : null), ...(meeting ? (unread ? styles.rowMeeting : styles.rowMeetingRead) : null) }}
+      onPress={onPress}>
+      <IconBadge icon={meeting ? 'video' : style.icon} tone={meeting ? 'warning' : style.tone} />
       <View style={{ flex: 1, gap: 2 }}>
-        <AppText weight={unread ? '600' : '400'} numberOfLines={2}>
+        <AppText weight={meeting ? '700' : unread ? '600' : '400'} numberOfLines={2}>
           {item.title}
         </AppText>
         {item.body ? (
-          <AppText variant="label" color="textMuted" weight="400" numberOfLines={2}>
+          <AppText variant="label" color={meeting ? 'text' : 'textMuted'} weight="400" numberOfLines={2}>
             {item.body}
           </AppText>
         ) : null}
@@ -39,14 +44,18 @@ function NotificationRow({ item, onPress }: { item: AppNotification; onPress: ()
           <AppText variant="caption" color="textSubtle">
             {timeAgo(item.createdAt)}
           </AppText>
-          {item.priority === 'HIGH' && unread ? (
+          {meeting ? (
+            <AppText variant="caption" weight="700" color="warning">
+              · Important
+            </AppText>
+          ) : item.priority === 'HIGH' && unread ? (
             <AppText variant="caption" weight="600" color="danger">
               · High priority
             </AppText>
           ) : null}
         </Row>
       </View>
-      {unread ? <View style={[styles.dot, item.priority === 'HIGH' && { backgroundColor: colors.danger }]} /> : null}
+      {unread ? <View style={[styles.dot, item.priority === 'HIGH' && { backgroundColor: colors.danger }, meeting && { backgroundColor: colors.warning }]} /> : null}
     </Card>
   );
 }
@@ -186,6 +195,8 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: 20, paddingBottom: 40, gap: 10, flexGrow: 1 },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   rowUnread: { backgroundColor: colors.primarySoft, borderColor: colors.primarySoft },
+  rowMeeting: { backgroundColor: colors.warningSoft, borderColor: colors.warning, borderLeftWidth: 4 },
+  rowMeetingRead: { backgroundColor: colors.surface, borderColor: colors.warningSoft, borderLeftWidth: 4 },
   dot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.primary, marginTop: 6 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingTop: 60 },
 });

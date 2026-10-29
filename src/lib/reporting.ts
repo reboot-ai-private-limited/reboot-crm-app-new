@@ -96,9 +96,45 @@ export async function fetchEmployees() {
   return res.data;
 }
 
-/** Admin: POST /employees — same fields as the web "Add Employee" form (without documents). */
+/**
+ * Admin: POST /employees as a Draft. The app has only the basic details; the address, guardian, joining date and documents
+ * are added on the web, where "Submit & create ID pass" activates the login. A draft cannot sign in.
+ */
 export function createEmployee(input: { fullName: string; mobile: string; email: string; role: EmployeeRole }) {
-  return api<unknown>('/employees', { method: 'POST', body: input });
+  return api<unknown>('/employees', { method: 'POST', body: { ...input, saveAsDraft: true } });
+}
+
+/** Employee statuses. Draft = saved but not submitted yet; Inactive and Terminated cannot sign in either. */
+export type EmployeeStatus = 'Active' | 'Inactive' | 'Terminated' | 'Draft';
+export const STATUS_TONE: Record<EmployeeStatus, 'success' | 'slate' | 'danger' | 'warning'> = { Active: 'success', Inactive: 'slate', Terminated: 'danger', Draft: 'warning' };
+export const statusTone = (s?: string) => STATUS_TONE[(s as EmployeeStatus) ?? 'Inactive'] ?? 'slate';
+
+/** One employee with the onboarding details (GET /employees/:id, Admin). */
+export type EmployeeDetails = {
+  id: string;
+  fullName: string;
+  mobile: string;
+  email: string;
+  role: EmployeeRole;
+  status: EmployeeStatus;
+  alternateMobile?: string;
+  addressLine1?: string;
+  city?: string;
+  pinCode?: string;
+  state?: string;
+  presentAddressSame?: boolean;
+  presentAddress?: { line1?: string; city?: string; pinCode?: string; state?: string };
+  guardianName?: string;
+  guardianContact?: string;
+  refPersonName?: string;
+  refPersonContact?: string;
+  joiningDate?: string | null;
+  lastQualification?: string;
+  documents?: { name: string; url: string; publicId: string; category?: string; isRaw?: boolean }[];
+};
+
+export function fetchEmployee(id: string) {
+  return api<EmployeeDetails>(`/employees/${id}`);
 }
 
 /** Financial year (April–March) a month falls in, as the backend expects it: "2026-2027". */

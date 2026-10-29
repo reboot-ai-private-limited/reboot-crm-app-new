@@ -24,7 +24,7 @@ function validate(v: { fullName: string; mobile: string; email: string }): Error
   return e;
 }
 
-// Admin: POST /employees.
+// Admin: POST /employees, saved as a Draft. The rest of the onboarding (address, guardian, documents) and the activation are done on the web.
 export default function AddEmployee() {
   const router = useRouter();
   const [fullName, setFullName] = useState('');
@@ -60,7 +60,7 @@ export default function AddEmployee() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-      <Header title="Add employee" subtitle="They sign in with this mobile number" back />
+      <Header title="Add employee" subtitle="Saved as a draft until finished on the web" back />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <Field
@@ -113,6 +113,14 @@ export default function AddEmployee() {
             <Segmented items={ROLES.map((r) => ROLE_LABEL[r])} value={ROLE_LABEL[role]} onChange={(l) => setRole(ROLES.find((r) => ROLE_LABEL[r] === l) ?? 'BusinessAdvisor')} />
           </View>
 
+          <View style={styles.note}>
+            <Icon name="alert" size={16} color="textMuted" />
+            <AppText variant="caption" color="textMuted" style={{ flex: 1 }}>
+              This saves a draft. To activate the login, open the employee on the web, add the address, guardian, joining date and Govt ID, then press
+              Submit & create ID pass.
+            </AppText>
+          </View>
+
           {serverError ? (
             <View style={styles.serverError}>
               <Icon name="alert" size={16} color="danger" />
@@ -123,7 +131,7 @@ export default function AddEmployee() {
           ) : null}
         </ScrollView>
         <View style={styles.footer}>
-          <Button label={saving ? 'Saving…' : 'Add employee'} icon="check" flex loading={saving} onPress={submit} />
+          <Button label={saving ? 'Saving…' : 'Save as draft'} icon="check" flex loading={saving} onPress={submit} />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -134,5 +142,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, paddingTop: 4, gap: 14 },
   footer: { flexDirection: 'row', padding: 20, paddingTop: 12, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
+  note: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', padding: 12, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   serverError: { flexDirection: 'row', gap: 8, alignItems: 'center', padding: 12, borderRadius: 12, backgroundColor: colors.dangerSoft },
 });

@@ -102,8 +102,17 @@ const WEB_URL = (process.env.EXPO_PUBLIC_WEB_URL ?? '').replace(/\/+$/, '');
 export type InvoiceChannel = 'WHATSAPP' | 'COPY_LINK';
 
 /**
- * POST /invoices/:id/send — creates the public link on first use and logs the send.
- * WHATSAPP also messages the customer through WABridge. Returns the link the customer sees
+ * POST /invoices/:id/send (WHATSAPP): the customer gets the proforma_estimate_ready template with a View Invoice button.
+ * Only unpaid invoices; the server refuses a paid one, a customer without a mobile, or a message WhatsApp did not accept,
+ * with the reason as the error. Returns DRY_RUN when WhatsApp sending is off on the server (development).
+ */
+export async function sendInvoiceOnWhatsApp(id: string) {
+  const res = await api<{ publicToken: string; whatsapp?: string }>(`/invoices/${id}/send`, { method: 'POST', body: { deliveryChannel: 'WHATSAPP' } });
+  return res.whatsapp ?? 'SENT';
+}
+
+/**
+ * POST /invoices/:id/send — creates the public link on first use and logs the send. Returns the link the customer sees
  * (Proforma with the number hidden until fully paid, then the Billing invoice).
  */
 export async function sendInvoice(id: string, channel: InvoiceChannel) {

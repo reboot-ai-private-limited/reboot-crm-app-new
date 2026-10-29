@@ -46,6 +46,16 @@ export function proposalUrl(token?: string, preview = false) {
   return `${WEB_URL}/public/proposal/${token}${preview ? '?preview=true' : ''}`;
 }
 
+/**
+ * POST /proposals/:id/send (WHATSAPP): the lead gets the proposal_share template with a View Proposal button, and the proposal
+ * is marked Sent. The server refuses a lead without a mobile number or a message WhatsApp did not accept, with the reason
+ * as the error. Returns DRY_RUN when WhatsApp sending is off on the server (development).
+ */
+export async function sendProposalOnWhatsApp(proposalId: string) {
+  const res = await api<{ whatsapp?: string }>(`/proposals/${proposalId}/send`, { method: 'POST', body: { deliveryChannel: 'WHATSAPP' } });
+  return res.whatsapp ?? 'SENT';
+}
+
 export function fetchProposals(leadId: string) {
   return api<Proposal[]>(`/proposals/entity/${leadId}`);
 }

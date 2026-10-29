@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { DateRangeFilter } from '@/components/ui/DateRangeFilter';
 import { Avatar, Card, Header, Row } from '@/components/ui/layout';
 import { SingleSelectFilter } from '@/components/ui/SingleSelectFilter';
-import { DashboardRow, fetchDashboardRows, ROLE_LABEL } from '@/lib/reporting';
+import { DashboardRow, fetchDashboardRows, ROLE_LABEL, statusTone } from '@/lib/reporting';
 import { ColorName, colors } from '@/theme';
 
 const TABS = ['All', 'Advisors', 'Field'] as const;
@@ -35,7 +35,7 @@ const kpis = (r: DashboardRow): { label: string; value: string; tone?: ColorName
 ];
 
 function MemberCard({ row, onPress }: { row: DashboardRow; onPress: () => void }) {
-  const active = row.status === 'Active';
+  const tone0 = statusTone(row.status);
   const hasTarget = row.targetRevenue > 0;
   const pct = pctOf(row);
   const tone = progressTone(pct);
@@ -51,9 +51,9 @@ function MemberCard({ row, onPress }: { row: DashboardRow; onPress: () => void }
             {ROLE_LABEL[row.role] ?? row.role}
           </AppText>
         </View>
-        <View style={[styles.pill, { backgroundColor: colors[active ? 'successSoft' : 'slateSoft'] }]}>
-          <AppText variant="caption" weight="600" color={active ? 'success' : 'slate'}>
-            {active ? 'Active' : 'Inactive'}
+        <View style={[styles.pill, { backgroundColor: colors[`${tone0}Soft`] }]}>
+          <AppText variant="caption" weight="600" color={tone0}>
+            {row.status}
           </AppText>
         </View>
       </Row>

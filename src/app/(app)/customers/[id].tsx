@@ -12,7 +12,7 @@ import { Icon, IconName } from '@/components/ui/Icon';
 import { Avatar, Card, Header, Row, SectionHeader } from '@/components/ui/layout';
 import { Sheet } from '@/components/ui/Sheet';
 import { EmailDocumentForm } from '@/components/EmailDocumentForm';
-import { CustomerDetails, fetchCustomer, InvoiceStatus, rupees, sendInvoice, shortDate } from '@/lib/customers';
+import { CustomerDetails, fetchCustomer, InvoiceStatus, rupees, sendInvoice, sendInvoiceOnWhatsApp, shortDate } from '@/lib/customers';
 import { titleCase } from '@/lib/leads';
 import { dialDigits, formatPhone } from '@/lib/phone';
 import { ColorName, colors } from '@/theme';
@@ -120,8 +120,12 @@ export default function CustomerDetailsScreen() {
     setNotice(null);
     try {
       if (action === 'whatsapp') {
-        await sendInvoice(invoiceId, 'WHATSAPP');
-        setNotice({ text: 'Invoice link sent to the customer on WhatsApp.', ok: true });
+        const result = await sendInvoiceOnWhatsApp(invoiceId);
+        setNotice(
+          result === 'DRY_RUN'
+            ? { text: 'WhatsApp sending is off on this server, so no message went out.', ok: false }
+            : { text: 'Invoice sent to the customer on WhatsApp.', ok: true },
+        );
       } else {
         const link = await sendInvoice(invoiceId, 'COPY_LINK');
         if (action === 'view') await Linking.openURL(link);
@@ -294,7 +298,8 @@ export default function CustomerDetailsScreen() {
                 {inv.status !== 'CANCELLED' ? (
                   <Row gap={8} style={{ marginTop: 4 }}>
                     <Button label="View" icon="eye" variant="outline" small flex loading={busy === `${inv._id}:view`} onPress={() => act(inv._id, 'view')} />
-                    <Button label="WhatsApp" icon="chat" variant="outline" small flex loading={busy === `${inv._id}:whatsapp`} disabled={!customer.mobile} onPress={() => act(inv._id, 'whatsapp')} />
+                    {/* WhatsApp has only the "Proforma Estimate Ready" template, so a paid invoice is shared with View / Share / Email. */}
+                    <Button label="WhatsApp" icon="chat" variant="outline" small flex loading={busy === `${inv._id}:whatsapp`} disabled={!customer.mobile || inv.status === 'PAID'} onPress={() => act(inv._id, 'whatsapp')} />
                     <Button label="Share" icon="send" small flex loading={busy === `${inv._id}:share`} onPress={() => act(inv._id, 'share')} />
                   </Row>
                 ) : null}

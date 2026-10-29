@@ -59,6 +59,9 @@ export const notificationStyle: Record<NotificationType, { icon: IconName; tone:
 };
 
 /** "just now", "5 min ago", "3 h ago", "2 d ago", then the date. */
+/** Meeting notifications are always shown as important (highlighted), whatever their priority. Same rule as the web. */
+export const isMeetingNotification = (t?: string) => !!t && t.startsWith('MEETING_');
+
 export function timeAgo(iso: string, now = Date.now()): string {
   const mins = Math.floor((now - new Date(iso).getTime()) / 60_000);
   if (mins < 1) return 'just now';
