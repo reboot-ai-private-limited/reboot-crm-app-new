@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '@/components/ui/AppText';
 import { Icon, IconName } from '@/components/ui/Icon';
 import { Card, FilterChips, GradientCard, IconBadge, Row, SectionHeader } from '@/components/ui/layout';
+import { NotificationBell } from '@/components/ui/NotificationBell';
 import { rupees } from '@/lib/customers';
 import { fetchFollowUps, Lead } from '@/lib/leads';
 import { DashboardRow, fetchDashboardRows, fetchMonthRows, Range, RANGES, rangeDates } from '@/lib/reporting';
@@ -182,7 +183,7 @@ export default function Dashboard() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(range, true)} tintColor={colors.primary} />}>
         {/* Greeting */}
-        <Row>
+        <Row gap={10}>
           <View style={{ flex: 1 }}>
             <AppText variant="label" color="textMuted" weight="400">
               {greeting()},
@@ -196,6 +197,7 @@ export default function Dashboard() {
               Admin
             </AppText>
           </View>
+          <NotificationBell />
         </Row>
 
         {/* Period for the stats, target card and team numbers. */}

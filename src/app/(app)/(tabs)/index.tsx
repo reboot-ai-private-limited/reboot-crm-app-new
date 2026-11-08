@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '@/components/ui/AppText';
 import { Icon, IconName } from '@/components/ui/Icon';
 import { Avatar, Card, GradientCard, IconBadge, IconButton, Row, SectionHeader } from '@/components/ui/layout';
+import { NotificationBell } from '@/components/ui/NotificationBell';
 import { rupees } from '@/lib/customers';
 import { countMyLeads, fetchFollowUps, Lead } from '@/lib/leads';
 import { DashboardRow, fetchMyMonth } from '@/lib/reporting';
@@ -178,7 +179,7 @@ export default function Home() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.primary} />}>
         {/* Greeting */}
-        <Row>
+        <Row gap={10}>
           <Avatar name={name || '?'} size={44} />
           <View style={{ flex: 1 }}>
             <AppText variant="label" color="textMuted" weight="400">
@@ -188,7 +189,7 @@ export default function Home() {
               {name.split(' ')[0]}
             </AppText>
           </View>
-          <IconButton icon="bell" onPress={() => router.push('/alerts')} />
+          <NotificationBell />
         </Row>
 
         {!loaded ? (
