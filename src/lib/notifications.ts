@@ -13,6 +13,9 @@ export type NotificationType =
   | 'MEETING_CANCELLED'
   | 'MEETING_STARTING'
   | 'MEETING_NEEDS_OUTCOME'
+  | 'MEETING_REMINDER'
+  | 'PROPOSAL_VIEWED'
+  | 'PROPOSAL_UNSEEN'
   | 'RENEWAL_DUE'
   | 'SERVICE_EXPIRED';
 
@@ -54,6 +57,9 @@ export const notificationStyle: Record<NotificationType, { icon: IconName; tone:
   MEETING_CANCELLED: { icon: 'video', tone: 'slate' },
   MEETING_STARTING: { icon: 'video', tone: 'danger' },
   MEETING_NEEDS_OUTCOME: { icon: 'check', tone: 'success' },
+  MEETING_REMINDER: { icon: 'video', tone: 'purple' },
+  PROPOSAL_VIEWED: { icon: 'check', tone: 'success' },
+  PROPOSAL_UNSEEN: { icon: 'clock', tone: 'warning' },
   RENEWAL_DUE: { icon: 'refresh', tone: 'warning' },
   SERVICE_EXPIRED: { icon: 'refresh', tone: 'danger' },
 };
