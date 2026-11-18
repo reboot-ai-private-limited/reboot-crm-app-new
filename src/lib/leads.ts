@@ -233,6 +233,26 @@ export function reassignLeads(leadIds: string[], newAssigneeId: string | null) {
   return api<{ count: number }>('/leads/bulk-reassign', { method: 'POST', body: { leadIds, newAssigneeId } });
 }
 
+/** The roles a candidate can be interested in (same list as the web Candidates form). */
+export const CANDIDATE_ROLES = ['Developer', 'Designer', 'Marketer', 'Telecaller', 'Sales', 'Content', 'Other'] as const;
+
+export type MoveToCandidatesResult = { moved: { leadId: string; candidateId: string }[]; skipped: { leadId: string; name: string; reason: string }[] };
+
+/**
+ * Admin, Lead Pool leads who are really job seekers: POST /candidates/from-leads. Each lead becomes a candidate with the chosen role and
+ * is deleted from Leads; a lead that has sales work on it is refused, and comes back in `skipped` with the reason.
+ */
+export async function moveLeadsToCandidates(leadIds: string[], roleCategory: string): Promise<MoveToCandidatesResult> {
+  const result: MoveToCandidatesResult = { moved: [], skipped: [] };
+  // The server takes at most 200 leads in one request ("Select all" can pick more).
+  for (let i = 0; i < leadIds.length; i += 200) {
+    const part = await api<MoveToCandidatesResult>('/candidates/from-leads', { method: 'POST', body: { leadIds: leadIds.slice(i, i + 200), roleCategory } });
+    result.moved.push(...part.moved);
+    result.skipped.push(...part.skipped);
+  }
+  return result;
+}
+
 export function titleCase(s?: string) {
   return (s ?? '').replace(/\b\w/g, (c) => c.toUpperCase());
 }

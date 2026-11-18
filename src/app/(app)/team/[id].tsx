@@ -86,7 +86,7 @@ function Detail({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
-/** Onboarding details from the web Add Employee form. Read-only here: they are edited on the web. */
+/** Onboarding details from the web Add Employee form. Read-only here: the address, guardian and documents are edited on the web (name, mobile, email, designation and status via the pencil in the header). */
 function OnboardingCard({ e }: { e: EmployeeDetails }) {
   const tone = statusTone(e.status);
   const present = e.presentAddressSame === false && e.presentAddress ? addressText(e.presentAddress) : 'Same as permanent';
@@ -300,7 +300,12 @@ export default function TeamMember() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <Header title={name} subtitle={[ROLE_LABEL[role] ?? role, statusNote].filter(Boolean).join(' · ')} back />
+      <Header
+        title={name}
+        subtitle={[ROLE_LABEL[role] ?? role, statusNote].filter(Boolean).join(' · ')}
+        back
+        right={<IconButton icon="edit" onPress={() => router.push({ pathname: '/team/edit', params: { id } })} />}
+      />
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={styles.content}

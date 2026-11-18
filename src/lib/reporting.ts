@@ -104,6 +104,14 @@ export function createEmployee(input: { fullName: string; mobile: string; email:
   return api<unknown>('/employees', { method: 'POST', body: { ...input, saveAsDraft: true } });
 }
 
+/**
+ * Admin: PATCH /employees/:id, the basic details and the status (a submitted employee only; a draft keeps its status until it is
+ * submitted on the web). Moving an Active employee to Inactive or Terminated sends all their leads back to the lead pool (the server does it).
+ */
+export function updateEmployee(id: string, input: { fullName: string; mobile: string; alternateMobile: string; email: string; role: EmployeeRole; status?: 'Active' | 'Inactive' | 'Terminated' }) {
+  return api<unknown>(`/employees/${id}`, { method: 'PATCH', body: input });
+}
+
 /** Employee statuses. Draft = saved but not submitted yet; Inactive and Terminated cannot sign in either. */
 export type EmployeeStatus = 'Active' | 'Inactive' | 'Terminated' | 'Draft';
 export const STATUS_TONE: Record<EmployeeStatus, 'success' | 'slate' | 'danger' | 'warning'> = { Active: 'success', Inactive: 'slate', Terminated: 'danger', Draft: 'warning' };

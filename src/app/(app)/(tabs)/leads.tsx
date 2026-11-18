@@ -11,7 +11,7 @@ import { FilterOption, MultiSelectFilter } from '@/components/ui/MultiSelectFilt
 import { Sheet } from '@/components/ui/Sheet';
 import { LeadListSkeleton } from '@/components/ui/Skeleton';
 import { PRIORITY_TONE, statusTone } from '@/components/leads/meta';
-import { claimLead, fetchLeads, Lead, LEAD_STATUSES, reassignLeads, statusLabel, titleCase } from '@/lib/leads';
+import { CANDIDATE_ROLES, claimLead, fetchLeads, Lead, LEAD_STATUSES, moveLeadsToCandidates, MoveToCandidatesResult, reassignLeads, statusLabel, titleCase } from '@/lib/leads';
 import { dialDigits } from '@/lib/phone';
 import { EmployeeOption, fetchEmployees } from '@/lib/reporting';
 import { useAuth } from '@/store/auth';
@@ -158,6 +158,12 @@ export default function LeadsScreen() {
   const [noticeFailed, setNoticeFailed] = useState(false);
   // Pool: the lead being claimed right now.
   const [claimingId, setClaimingId] = useState<string | null>(null);
+  // Admin, Pool: move the selected leads (job seekers) to Candidates.
+  const [candOpen, setCandOpen] = useState(false);
+  const [candRole, setCandRole] = useState('');
+  const [candSaving, setCandSaving] = useState(false);
+  const [candError, setCandError] = useState('');
+  const [candResult, setCandResult] = useState<MoveToCandidatesResult | null>(null);
 
   // Debounce typing so we don't hit the API on every key.
   useEffect(() => {
@@ -353,6 +359,44 @@ export default function LeadsScreen() {
     }
   };
 
+  const openCandidates = () => {
+    setCandRole('');
+    setCandError('');
+    setCandResult(null);
+    setCandOpen(true);
+  };
+  const closeCandidates = () => {
+    if (candSaving) return;
+    setCandOpen(false);
+    if (candResult) stopSelecting();
+  };
+
+  // Pool leads who are job seekers become candidates; one with sales work on it is refused by the server and listed with the reason.
+  const confirmCandidates = async () => {
+    if (!candRole) return;
+    setCandSaving(true);
+    setCandError('');
+    try {
+      const res = await moveLeadsToCandidates([...selected], candRole);
+      const movedIds = new Set(res.moved.map((m) => m.leadId));
+      setAllLeads((prev) => prev.filter((l) => !movedIds.has(l._id)));
+      setServerTotal((n) => Math.max(0, n - movedIds.size));
+      setSelected((prev) => new Set([...prev].filter((id) => !movedIds.has(id))));
+      if (res.skipped.length) {
+        setCandResult(res); // stay open: some leads could not be moved, and the reasons are shown
+      } else {
+        setCandOpen(false);
+        stopSelecting();
+        setNoticeFailed(false);
+        setNotice(`${res.moved.length} ${res.moved.length === 1 ? 'lead' : 'leads'} moved to Candidates`);
+      }
+    } catch (e) {
+      setCandError((e as Error).message);
+    } finally {
+      setCandSaving(false);
+    }
+  };
+
   // Pool: the lead becomes yours and leaves the pool list.
   const claim = async (lead: Lead) => {
     setClaimingId(lead._id);
@@ -453,6 +497,7 @@ export default function LeadsScreen() {
             </AppText>
           </Pressable>
           <View style={{ flex: 1 }} />
+          {pool ? <Button label="To Candidates" icon="users" variant="soft" small disabled={selected.size === 0} onPress={openCandidates} /> : null}
           <Button label={selected.size ? `Reassign ${selected.size}` : 'Reassign'} icon="users" small disabled={selected.size === 0} onPress={openReassign} />
         </View>
       ) : (
@@ -488,6 +533,57 @@ export default function LeadsScreen() {
           </AppText>
         ) : null}
         <Button label={saving ? 'Saving…' : `Reassign ${selected.size} ${selected.size === 1 ? 'lead' : 'leads'}`} loading={saving} disabled={target === undefined} onPress={confirmReassign} />
+      </Sheet>
+
+      {/* Job seekers who landed in the pool go to the Candidates talent pool (same as the web). */}
+      <Sheet visible={candOpen} title="Move to Candidates" onClose={closeCandidates}>
+        {candResult ? (
+          <>
+            <AppText>
+              <AppText weight="700">{candResult.moved.length}</AppText> moved to Candidates. <AppText weight="700">{candResult.skipped.length}</AppText> could not be moved:
+            </AppText>
+            <ScrollView style={{ maxHeight: 280 }} contentContainerStyle={{ gap: 8 }}>
+              {candResult.skipped.map((s) => (
+                <View key={s.leadId} style={[styles.option, { backgroundColor: colors.dangerSoft, borderColor: colors.dangerSoft, alignItems: 'flex-start' }]}>
+                  <View style={{ flex: 1 }}>
+                    <AppText weight="600">{s.name}</AppText>
+                    <AppText variant="caption" color="danger">
+                      {s.reason}
+                    </AppText>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+            <Button label="Done" onPress={closeCandidates} />
+          </>
+        ) : (
+          <>
+            <AppText variant="caption" color="textMuted">
+              For pool leads who are looking for a job, not buying from us. {selected.size === 1 ? 'A candidate is' : `${selected.size} candidates are`} created from the name, mobile, email and city, and{' '}
+              {selected.size === 1 ? 'the lead is' : 'the leads are'} deleted from Leads. A lead with proposals, meetings or invoices is not moved.
+            </AppText>
+            <AppText variant="label" color="textMuted">
+              Interested for *
+            </AppText>
+            <ScrollView style={{ maxHeight: 280 }} contentContainerStyle={{ gap: 8 }}>
+              {CANDIDATE_ROLES.map((r) => {
+                const on = candRole === r;
+                return (
+                  <Pressable key={r} onPress={() => setCandRole(r)} style={[styles.option, on ? { borderColor: colors.primary, backgroundColor: colors.primarySoft } : null]}>
+                    <View style={[styles.radio, on ? { borderColor: colors.primary } : null]}>{on ? <View style={styles.radioDot} /> : null}</View>
+                    <AppText weight="600">{r}</AppText>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            {candError ? (
+              <AppText variant="label" color="danger">
+                {candError}
+              </AppText>
+            ) : null}
+            <Button label={candSaving ? 'Moving…' : `Move ${selected.size} to Candidates`} loading={candSaving} disabled={!candRole || selected.size === 0} onPress={confirmCandidates} />
+          </>
+        )}
       </Sheet>
     </SafeAreaView>
   );
