@@ -1,6 +1,7 @@
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { ListSkeleton } from '@/components/ui/Skeleton';
+import { Linking, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { timeAgo } from '@/components/leads/meta';
@@ -248,7 +249,7 @@ export default function LeadProposals() {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
         <Header title="Proposals" back />
-        <View style={styles.center}>
+        <View style={error ? styles.center : { padding: 20 }}>
           {error ? (
             <>
               <AppText color="danger" align="center">
@@ -257,7 +258,7 @@ export default function LeadProposals() {
               <Button label="Try again" variant="outline" small onPress={load} />
             </>
           ) : (
-            <ActivityIndicator color={colors.primary} />
+            <ListSkeleton count={3} padded={false} />
           )}
         </View>
       </SafeAreaView>

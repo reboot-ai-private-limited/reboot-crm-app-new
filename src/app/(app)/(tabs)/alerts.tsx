@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { ListSkeleton } from '@/components/ui/Skeleton';
+import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
@@ -155,7 +156,7 @@ export default function AlertsScreen() {
       </View>
 
       {!loaded ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
+        <ListSkeleton />
       ) : (
         <FlatList
           data={items}

@@ -1,15 +1,12 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 
 import { LeadForm } from '@/components/leads/LeadForm';
 import { AppText } from '@/components/ui/AppText';
-import { CITIES } from '@/constants/cities';
+import { DetailSkeleton } from '@/components/ui/Skeleton';
 import { fetchLead, Lead, updateLead } from '@/lib/leads';
 import { colors } from '@/theme';
-
-// Backend stores city lowercase; map it back to the list spelling for the picker.
-const cityFromDb = (c?: string) => CITIES.find((x) => x.toLowerCase() === (c ?? '').toLowerCase()) ?? '';
 
 export default function EditLead() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -25,8 +22,8 @@ export default function EditLead() {
 
   if (!lead) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg, padding: 20 }}>
-        {error ? <AppText color="danger" align="center">{error}</AppText> : <ActivityIndicator color={colors.primary} />}
+      <View style={{ flex: 1, justifyContent: error ? 'center' : 'flex-start', backgroundColor: colors.bg, padding: 20, paddingTop: error ? 20 : 60 }}>
+        {error ? <AppText color="danger" align="center">{error}</AppText> : <DetailSkeleton />}
       </View>
     );
   }
@@ -41,7 +38,7 @@ export default function EditLead() {
         countryCode: lead.countryCode ?? '91',
         mobile: lead.mobile ?? '',
         email: lead.email ?? '',
-        city: cityFromDb(lead.city),
+        city: lead.city ?? '',
         category: lead.category ?? '',
         address: lead.address ?? '',
         website: lead.website ?? '',

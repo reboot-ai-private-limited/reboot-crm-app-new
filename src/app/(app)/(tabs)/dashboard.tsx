@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { StatsSkeleton } from '@/components/ui/Skeleton';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
@@ -204,7 +205,7 @@ export default function Dashboard() {
         <FilterChips items={[...RANGES]} value={range} onChange={(v) => changeRange(v as Range)} />
 
         {!loaded ? (
-          <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
+          <StatsSkeleton />
         ) : (
           <>
             {error ? (

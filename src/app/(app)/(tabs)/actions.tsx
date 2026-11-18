@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { StatsSkeleton } from '@/components/ui/Skeleton';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
@@ -89,7 +90,7 @@ export default function ActionRequired() {
     <SafeAreaView style={styles.screen} edges={['top']}>
       <Header title="Action required" subtitle={!loaded ? 'Checking…' : open === 0 ? 'Nothing needs attention' : `${open} ${open === 1 ? 'item needs' : 'items need'} attention`} />
       {!loaded ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
+        <StatsSkeleton padded />
       ) : (
         <ScrollView
           contentContainerStyle={styles.content}

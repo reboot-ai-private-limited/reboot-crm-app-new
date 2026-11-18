@@ -1,16 +1,17 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { FlatList, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
-import { Avatar, Card, Field, FilterChips, Header, IconButton, Row } from '@/components/ui/layout';
+import { Card, Field, FilterChips, Header, IconButton, Row } from '@/components/ui/layout';
 import { FilterOption, MultiSelectFilter } from '@/components/ui/MultiSelectFilter';
 import { Sheet } from '@/components/ui/Sheet';
+import { LeadListSkeleton } from '@/components/ui/Skeleton';
 import { PRIORITY_TONE, statusTone } from '@/components/leads/meta';
-import { claimLead, fetchAllLeads, Lead, LEAD_STATUSES, reassignLeads, statusLabel, titleCase } from '@/lib/leads';
+import { claimLead, fetchLeads, Lead, LEAD_STATUSES, reassignLeads, statusLabel, titleCase } from '@/lib/leads';
 import { dialDigits } from '@/lib/phone';
 import { EmployeeOption, fetchEmployees } from '@/lib/reporting';
 import { useAuth } from '@/store/auth';
@@ -62,7 +63,6 @@ function LeadRow({ lead, now, onPress, onLongPress, selecting, selected, owner, 
         {selecting ? (
           <View style={[styles.tick, selected ? { backgroundColor: colors.primary, borderColor: colors.primary } : null]}>{selected ? <Icon name="check" size={14} color="surface" /> : null}</View>
         ) : null}
-        <Avatar name={name} size={40} />
         <View style={{ flex: 1 }}>
           <AppText variant="section" numberOfLines={1}>
             {name}
@@ -129,8 +129,12 @@ export default function LeadsScreen() {
   const allScope = isAdmin && scope === 'All leads';
   const scopes = isAdmin ? ['My leads', 'All leads', 'Pool'] : ['My leads', 'Pool'];
 
-  // Every lead of the current scope (search + pool/mine); the three dropdown filters are applied on top.
+  // The leads loaded so far for the current scope + search (PAGE_SIZE more each time the list is scrolled to the end);
+  // the dropdown filters are applied on top of these. `serverTotal` is how many the server has for the scope + search.
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
+  const [serverTotal, setServerTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const pageRef = useRef(1);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   // Reference time for 'overdue', refreshed with each response.
@@ -167,9 +171,12 @@ export default function LeadsScreen() {
       if (mode === 'refresh') setRefreshing(true);
       setError('');
       try {
-        const res = await fetchAllLeads({ admin: allScope, pool, search: query });
+        const res = await fetchLeads({ admin: allScope, pool, page: 1, search: query });
         if (id !== requestId.current) return; // a newer search superseded this one
-        setAllLeads(res);
+        pageRef.current = 1;
+        setAllLeads(res.data);
+        setServerTotal(res.total);
+        setLoadingMore(false);
         setNow(new Date().getTime());
       } catch (e) {
         if (id === requestId.current) setError((e as Error).message);
@@ -186,10 +193,13 @@ export default function LeadsScreen() {
   // (Re)load whenever the search or role changes. State is only set after the await.
   useEffect(() => {
     const id = ++requestId.current;
-    fetchAllLeads({ admin: allScope, pool, search: query })
+    fetchLeads({ admin: allScope, pool, page: 1, search: query })
       .then((res) => {
         if (id !== requestId.current) return;
-        setAllLeads(res);
+        pageRef.current = 1;
+        setAllLeads(res.data);
+        setServerTotal(res.total);
+        setLoadingMore(false);
         setNow(new Date().getTime());
         setError('');
       })
@@ -251,6 +261,37 @@ export default function LeadsScreen() {
   );
   const total = leads.length;
   const filtering = statusSel.length + prioritySel.length + citySel.length + websiteSel.length + activeUserSel.length > 0;
+
+  // Infinite scroll: the next PAGE_SIZE leads, added to the end of the list.
+  const hasMore = allLeads.length < serverTotal;
+  const loadMore = useCallback(async () => {
+    if (loadingMore || loading || !hasMore || error) return;
+    const id = requestId.current;
+    setLoadingMore(true);
+    try {
+      const res = await fetchLeads({ admin: allScope, pool, page: pageRef.current + 1, search: query });
+      if (id !== requestId.current) return; // the search or scope changed meanwhile
+      pageRef.current += 1;
+      setAllLeads((prev) => {
+        const seen = new Set(prev.map((l) => l._id));
+        return [...prev, ...res.data.filter((l) => !seen.has(l._id))];
+      });
+      setServerTotal(res.total);
+      // An empty page means the server has no more: stop asking.
+      if (res.data.length === 0) setServerTotal(allLeads.length);
+    } catch (e) {
+      if (id === requestId.current) setError((e as Error).message);
+    } finally {
+      if (id === requestId.current) setLoadingMore(false);
+    }
+  }, [loadingMore, loading, hasMore, error, allScope, pool, query, allLeads.length]);
+
+  // The dropdown filters work on the leads loaded so far, so while one is ticked the rest are loaded in the background.
+  useEffect(() => {
+    if (!(filtering && hasMore && !loading && !loadingMore && !error)) return;
+    const t = setTimeout(() => void loadMore(), 0);
+    return () => clearTimeout(t);
+  }, [filtering, hasMore, loading, loadingMore, error, loadMore]);
 
   // --- reassign (Admin) ---
   const stopSelecting = () => {
@@ -318,6 +359,7 @@ export default function LeadsScreen() {
     try {
       await claimLead(lead._id);
       setAllLeads((prev) => prev.filter((l) => l._id !== lead._id));
+      setServerTotal((n) => Math.max(0, n - 1));
       setNoticeFailed(false);
       setNotice(`${lead.companyName || lead.contactName || 'Lead'} claimed. It is now in My leads.`);
     } catch (e) {
@@ -333,7 +375,7 @@ export default function LeadsScreen() {
     <SafeAreaView style={styles.screen} edges={['top']}>
       <Header
         title={pool ? 'Lead pool' : scope}
-        subtitle={selecting ? `${selected.size} selected` : loading ? 'Loading…' : `${total} ${total === 1 ? 'lead' : 'leads'}`}
+        subtitle={selecting ? `${selected.size} selected` : loading ? 'Loading…' : `${filtering ? total : serverTotal} ${(filtering ? total : serverTotal) === 1 ? 'lead' : 'leads'}`}
         right={
           <Row gap={8}>
             {isAdmin ? <IconButton icon={selecting ? 'x' : 'check'} onPress={() => (selecting ? stopSelecting() : setSelecting(true))} /> : null}
@@ -363,7 +405,7 @@ export default function LeadsScreen() {
       </View>
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
+        <LeadListSkeleton />
       ) : (
         <FlatList
           data={leads}
@@ -383,6 +425,9 @@ export default function LeadsScreen() {
             />
           )}
           contentContainerStyle={styles.list}
+          onEndReached={() => void loadMore()}
+          onEndReachedThreshold={0.6}
+          ListFooterComponent={loadingMore ? <View style={{ marginTop: 12, marginHorizontal: -20 }}><LeadListSkeleton count={2} /></View> : null}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load('refresh')} tintColor={colors.primary} />}
           ListEmptyComponent={
             <View style={styles.empty}>

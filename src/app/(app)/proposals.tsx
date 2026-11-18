@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { ListSkeleton } from '@/components/ui/Skeleton';
+import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
@@ -138,7 +139,7 @@ export default function ProposalsScreen() {
       </View>
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
+        <ListSkeleton />
       ) : (
         <FlatList
           data={rows}
@@ -159,7 +160,7 @@ export default function ProposalsScreen() {
           onEndReached={() => {
             if (!loadingMore && !error && page < totalPages) load(page + 1, 'more');
           }}
-          ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.primary} /> : null}
+          ListFooterComponent={loadingMore ? <View style={{ marginTop: 12, marginHorizontal: -20 }}><ListSkeleton count={2} /></View> : null}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Icon name={error ? 'alert' : 'file'} size={32} color={error ? 'danger' : 'textSubtle'} />

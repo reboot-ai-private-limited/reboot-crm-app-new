@@ -1,5 +1,6 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
+import { DetailSkeleton } from "@/components/ui/Skeleton";
 import {
   ActivityIndicator,
   Linking,
@@ -343,7 +344,7 @@ export default function LeadDetails() {
     return (
       <SafeAreaView style={styles.screen} edges={["top"]}>
         <Header title="Lead details" back />
-        <View style={styles.center}>
+        <View style={error ? styles.center : { padding: 20 }}>
           {error ? (
             <>
               <AppText color="danger" align="center">
@@ -357,7 +358,7 @@ export default function LeadDetails() {
               />
             </>
           ) : (
-            <ActivityIndicator color={colors.primary} />
+            <DetailSkeleton />
           )}
         </View>
       </SafeAreaView>

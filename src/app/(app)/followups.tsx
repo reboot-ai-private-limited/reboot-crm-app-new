@@ -1,6 +1,7 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ListSkeleton } from '@/components/ui/Skeleton';
+import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
@@ -140,7 +141,7 @@ export default function FollowUps() {
         <FilterChips items={FILTERS.map(chipLabel)} value={chipLabel(filter)} onChange={(l) => setFilter(FILTERS.find((f) => chipLabel(f) === l) ?? 'All')} />
       </View>
       {!loaded ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
+        <ListSkeleton />
       ) : (
         <ScrollView
           contentContainerStyle={styles.list}

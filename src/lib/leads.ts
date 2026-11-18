@@ -95,7 +95,8 @@ export const CLOSED_STATUSES: LeadStatus[] = ['DEAL_CLOSED', 'NOT_INTERESTED', '
 
 export const statusLabel = (s?: string) => (s && s in STATUS_LABEL ? STATUS_LABEL[s as LeadStatus] : (s ?? '').replace(/_/g, ' '));
 
-export const PAGE_SIZE = 20;
+/** Leads loaded per request on the Leads screen (infinite scroll). */
+export const PAGE_SIZE = 50;
 
 /** Employees: GET /leads/my. Admin: GET /leads/all (every assigned lead). `pool`: GET /leads/pool (unassigned). */
 export function fetchLeads(opts: { admin: boolean; pool?: boolean; page: number; search?: string; status?: LeadStatus; priority?: LeadPriority }) {

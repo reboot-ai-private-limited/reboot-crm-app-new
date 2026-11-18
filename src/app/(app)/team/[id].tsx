@@ -1,6 +1,7 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ListSkeleton, StatsSkeleton } from '@/components/ui/Skeleton';
+import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
@@ -337,7 +338,7 @@ export default function TeamMember() {
         />
 
         {monthLoading && !row ? (
-          <ActivityIndicator color={colors.primary} />
+          <StatsSkeleton />
         ) : monthError ? (
           <Card borderColor="danger">
             <Row>
@@ -446,7 +447,7 @@ export default function TeamMember() {
         <SectionHeader title="Activity" />
         <Pager label={dayLabel} onPrev={() => shiftDay(-1)} onNext={() => shiftDay(1)} nextDisabled={sameDay(day, now)} />
         {dayLoading && activities.length === 0 ? (
-          <ActivityIndicator color={colors.primary} />
+          <ListSkeleton count={3} padded={false} />
         ) : dayError ? (
           <Card borderColor="danger">
             <Row>

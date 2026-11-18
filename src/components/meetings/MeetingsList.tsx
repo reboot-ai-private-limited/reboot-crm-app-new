@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ListSkeleton } from '@/components/ui/Skeleton';
 import {
-  ActivityIndicator,
   Linking,
   RefreshControl,
   ScrollView,
@@ -187,9 +187,7 @@ export function MeetingsList({ back }: { back?: boolean }) {
         }
       >
         {loading && !refreshing ? (
-          <View style={styles.center}>
-            <ActivityIndicator size="small" color={colors.primary} />
-          </View>
+          <ListSkeleton padded={false} count={4} />
         ) : error ? (
           <Card style={{ gap: 8, alignItems: 'center', paddingVertical: 20 }}>
             <Icon name="alert" size={24} color="danger" />

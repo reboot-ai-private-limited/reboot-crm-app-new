@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { DetailSkeleton } from '@/components/ui/Skeleton';
+import { Linking, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
@@ -142,7 +143,7 @@ export default function CustomerDetailsScreen() {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
         <Header title="Customer" back />
-        <View style={styles.center}>
+        <View style={error ? styles.center : { padding: 20 }}>
           {error ? (
             <>
               <AppText color="danger" align="center">
@@ -151,7 +152,7 @@ export default function CustomerDetailsScreen() {
               <Button label="Try again" variant="outline" small onPress={load} />
             </>
           ) : (
-            <ActivityIndicator color={colors.primary} />
+            <DetailSkeleton />
           )}
         </View>
       </SafeAreaView>
