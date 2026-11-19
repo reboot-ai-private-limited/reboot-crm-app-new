@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,9 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { Field, Header } from '@/components/ui/layout';
 import { SelectField } from '@/components/ui/SelectField';
-import { CATEGORIES } from '@/constants/categories';
-import { CITIES } from '@/constants/cities';
-import { ApiError } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { LeadInput, statusLabel } from '@/lib/leads';
 import { isValidWebsite } from '@/lib/website';
 import { codeForLabel, COUNTRY_LABELS, DEFAULT_CALLING_CODE, isValidNumber, labelForCode } from '@/lib/phone';
@@ -57,6 +55,25 @@ export function LeadForm({
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [serverError, setServerError] = useState('');
+  // Categories come from the CRM database (distinct lead categories), not a built-in list.
+  const [fetchedCategories, setFetchedCategories] = useState<string[]>([]);
+  const [fetchedCities, setFetchedCities] = useState<string[]>([]);
+  useEffect(() => {
+    api<string[]>('/leads/categories')
+      .then((list) => setFetchedCategories(Array.isArray(list) ? list : []))
+      .catch(() => setFetchedCategories([]));
+    api<string[]>('/leads/cities')
+      .then((list) => setFetchedCities(Array.isArray(list) ? list : []))
+      .catch(() => setFetchedCities([]));
+  }, []);
+  const cities = useMemo(
+    () => (initial.city && !fetchedCities.includes(initial.city) ? [initial.city, ...fetchedCities] : fetchedCities),
+    [fetchedCities, initial.city],
+  );
+  const categories = useMemo(
+    () => (initial.category && !fetchedCategories.includes(initial.category) ? [initial.category, ...fetchedCategories] : fetchedCategories),
+    [fetchedCategories, initial.category],
+  );
   // 409 duplicate → the existing lead, so the user can open it instead.
   const [duplicate, setDuplicate] = useState<{ _id: string; companyName?: string; contactName?: string; status?: string; assignedTo?: { fullName?: string } | null } | null>(null);
 
@@ -120,8 +137,8 @@ export function LeadForm({
           <AppText variant="label" color="textSubtle" weight="600" style={styles.group}>
             LOCATION & TYPE
           </AppText>
-          <SelectField label="City" required icon="pin" value={v.city} options={CITIES} onChange={set('city')} error={errors.city} />
-          <SelectField label="Category" required icon="briefcase" value={v.category} options={CATEGORIES} onChange={set('category')} error={errors.category} />
+          <SelectField label="City" required icon="pin" value={v.city} options={cities} onChange={set('city')} error={errors.city} />
+          <SelectField label="Category" required icon="briefcase" value={v.category} options={categories} onChange={set('category')} error={errors.category} />
           <Field label="Address" placeholder="Street, area (optional)" value={v.address ?? ''} onChangeText={set('address')} />
           <Field label="Website" icon="globe" placeholder="example.com (optional)" value={v.website ?? ''} onChangeText={set('website')} keyboardType="default" autoCapitalize="none" error={errors.website} />
 
