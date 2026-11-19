@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -49,11 +49,10 @@ export function NotificationBell() {
     }
   }, []);
 
-  useEffect(() => {
-    if (open) {
-      void loadPreview();
-    }
-  }, [open, loadPreview]);
+  const openBell = () => {
+    setOpen(true);
+    void loadPreview();
+  };
 
   const handleOpenItem = async (n: AppNotification) => {
     if (!n.readAt) {
@@ -97,7 +96,7 @@ export function NotificationBell() {
     <View style={styles.wrapper}>
       {/* Bell Button */}
       <TouchableOpacity
-        onPress={() => setOpen(true)}
+        onPress={openBell}
         style={styles.bellButton}
         activeOpacity={0.7}
         accessibilityLabel={unread ? `Notifications, ${unread} unread` : 'Notifications'}

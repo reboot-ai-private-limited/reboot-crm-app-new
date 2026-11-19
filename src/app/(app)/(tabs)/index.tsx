@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { Icon, IconName } from '@/components/ui/Icon';
-import { Avatar, Card, GradientCard, IconBadge, IconButton, Row, SectionHeader } from '@/components/ui/layout';
+import { Avatar, Card, GradientCard, IconBadge, Row, SectionHeader } from '@/components/ui/layout';
 import { NotificationBell } from '@/components/ui/NotificationBell';
 import { rupees } from '@/lib/customers';
 import { countMyLeads, fetchFollowUps, Lead } from '@/lib/leads';
