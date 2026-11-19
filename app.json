@@ -11,7 +11,7 @@
       "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.reboot.crm",
       "buildNumber": "1",
-      "supportsTablet": false,
+      "supportsTablet": true,
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
