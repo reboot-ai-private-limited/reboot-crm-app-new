@@ -32,6 +32,23 @@ Notifications?.setNotificationHandler({
   handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
 });
 
+// iOS: getDevicePushTokenAsync returns a raw APNs token, which FCM (the backend sender) rejects. Firebase Messaging swaps it for
+// an FCM token. Android keeps the expo-notifications token, which already is an FCM token. Same Expo Go guard as above.
+const firebaseMessaging: typeof import('@react-native-firebase/messaging') | null =
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  Notifications && Platform.OS === 'ios' ? require('@react-native-firebase/messaging') : null;
+
+/** The token the backend can send to: FCM on both platforms. */
+async function getPushToken(): Promise<string | null> {
+  if (firebaseMessaging) {
+    const messaging = firebaseMessaging.getMessaging();
+    await firebaseMessaging.registerDeviceForRemoteMessages(messaging);
+    return (await firebaseMessaging.getToken(messaging)) || null;
+  }
+  const { data } = await Notifications!.getDevicePushTokenAsync();
+  return typeof data === 'string' && data ? data : null;
+}
+
 async function sendToken(token: string) {
   await api('/notifications/devices', { method: 'POST', body: { token, platform: Platform.OS === 'ios' ? 'ios' : 'android' } });
   await SecureStore.setItemAsync(TOKEN_KEY, token);
@@ -53,8 +70,8 @@ export async function registerForPush() {
     if (status !== 'granted') ({ status } = await Notifications.requestPermissionsAsync());
     if (status !== 'granted') return;
 
-    const { data } = await Notifications.getDevicePushTokenAsync();
-    if (typeof data === 'string' && data) await sendToken(data);
+    const token = await getPushToken();
+    if (token) await sendToken(token);
   } catch (e) {
     console.warn('[Push] could not register this phone:', (e as Error).message);
   }
@@ -106,9 +123,11 @@ export function usePushNotifications() {
     const opened = Notifications.getLastNotificationResponse();
     if (opened) openFromPush(opened);
     // FCM can replace the token at any time; send the new one.
-    const tokenSub = Notifications.addPushTokenListener(({ data }) => {
-      if (typeof data === 'string' && data) sendToken(data).catch(() => {});
-    });
+    const tokenSub = firebaseMessaging
+      ? { remove: firebaseMessaging.onTokenRefresh(firebaseMessaging.getMessaging(), (token) => sendToken(token).catch(() => {})) }
+      : Notifications.addPushTokenListener(({ data }) => {
+          if (typeof data === 'string' && data) sendToken(data).catch(() => {});
+        });
     // A push arrived while the app is open: update the badge now.
     const receivedSub = Notifications.addNotificationReceivedListener(() => refreshUnreadCount());
     // A push tapped while the app is running.

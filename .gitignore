@@ -36,6 +36,7 @@ yarn-error.*
 
 # Firebase config (push notifications): kept out of git, copy it in from the Firebase console
 google-services.json
+GoogleService-Info.plist
 
 # typescript
 *.tsbuildinfo

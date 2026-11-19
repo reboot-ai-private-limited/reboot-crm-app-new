@@ -8,7 +8,14 @@
     "scheme": "rebootcrm",
     "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/images/icon.png"
+      "icon": "./assets/images/icon.png",
+      "bundleIdentifier": "com.reboot.crm",
+      "buildNumber": "1",
+      "supportsTablet": false,
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -42,7 +49,9 @@
         "expo-notifications",
         {
           "color": "#2F80FF",
-          "defaultChannel": "default"
+          "defaultChannel": "default",
+          "mode": "production",
+          "enableBackgroundRemoteNotifications": true
         }
       ],
       "@react-native-community/datetimepicker",
@@ -50,6 +59,17 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "My Reboot AI uses your location to record where leads are created and updated."
+        }
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static",
+            "forceStaticLinking": ["RNFBApp", "RNFBMessaging"]
+          }
         }
       ]
     ],
