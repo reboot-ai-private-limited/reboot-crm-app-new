@@ -34,9 +34,18 @@ Notifications?.setNotificationHandler({
 
 // iOS: getDevicePushTokenAsync returns a raw APNs token, which FCM (the backend sender) rejects. Firebase Messaging swaps it for
 // an FCM token. Android keeps the expo-notifications token, which already is an FCM token. Same Expo Go guard as above.
-const firebaseMessaging: typeof import('@react-native-firebase/messaging') | null =
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  Notifications && Platform.OS === 'ios' ? require('@react-native-firebase/messaging') : null;
+// Loaded defensively: if the native Firebase module is missing or not configured, push is skipped instead of crashing the app.
+function loadFirebaseMessaging(): typeof import('@react-native-firebase/messaging') | null {
+  if (!Notifications || Platform.OS !== 'ios') return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('@react-native-firebase/messaging');
+  } catch (e) {
+    console.warn('[Push] Firebase Messaging is not available:', (e as Error).message);
+    return null;
+  }
+}
+const firebaseMessaging = loadFirebaseMessaging();
 
 /** The token the backend can send to: FCM on both platforms. */
 async function getPushToken(): Promise<string | null> {
@@ -123,11 +132,16 @@ export function usePushNotifications() {
     const opened = Notifications.getLastNotificationResponse();
     if (opened) openFromPush(opened);
     // FCM can replace the token at any time; send the new one.
-    const tokenSub = firebaseMessaging
-      ? { remove: firebaseMessaging.onTokenRefresh(firebaseMessaging.getMessaging(), (token) => sendToken(token).catch(() => {})) }
-      : Notifications.addPushTokenListener(({ data }) => {
-          if (typeof data === 'string' && data) sendToken(data).catch(() => {});
-        });
+    let tokenSub: { remove: () => void } = { remove: () => {} };
+    try {
+      tokenSub = firebaseMessaging
+        ? { remove: firebaseMessaging.onTokenRefresh(firebaseMessaging.getMessaging(), (token) => sendToken(token).catch(() => {})) }
+        : Notifications.addPushTokenListener(({ data }) => {
+            if (typeof data === 'string' && data) sendToken(data).catch(() => {});
+          });
+    } catch (e) {
+      console.warn('[Push] could not watch for token changes:', (e as Error).message);
+    }
     // A push arrived while the app is open: update the badge now.
     const receivedSub = Notifications.addNotificationReceivedListener(() => refreshUnreadCount());
     // A push tapped while the app is running.
