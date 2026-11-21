@@ -1,4 +1,6 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { Tabs } from 'expo-router';
+import { Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconName } from '@/components/ui/Icon';
@@ -38,7 +40,16 @@ export default function TabsLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSubtle,
         // Grow by the bottom inset so the bar sits above the system navigation bar instead of under it.
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, height: 64 + insets.bottom, paddingTop: 6, paddingBottom: insets.bottom },
+        // iPhone: close to the standard tab bar height, so there is no extra empty band above the home indicator.
+        tabBarStyle: {
+          backgroundColor: 'transparent',
+          borderTopColor: colors.border,
+          height: (Platform.OS === 'ios' ? 52 : 64) + insets.bottom,
+          paddingTop: Platform.OS === 'ios' ? 4 : 6,
+          paddingBottom: insets.bottom,
+        },
+        // White at the top fading to light blue at the bottom.
+        tabBarBackground: () => <LinearGradient colors={[colors.surface, colors.primarySoft]} style={StyleSheet.absoluteFill} />,
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600', marginTop: 2 },
       }}>
       <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: tab('home'), ...emp }} />

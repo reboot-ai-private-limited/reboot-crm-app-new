@@ -287,7 +287,7 @@ export default function Dashboard() {
                       {tableRows.map((r, i) => {
                         const c = cells(r);
                         return (
-                          <View key={r.employeeId} style={[styles.tr, i > 0 && styles.divider]}>
+                          <View key={r.employeeId} style={[styles.tr, i % 2 === 1 && styles.zebra]}>
                             <Row gap={8} style={{ width: NAME_W }}>
                               <AppText weight="600" numberOfLines={1} style={{ flex: 1 }}>
                                 {shortName(r.employeeName)}
@@ -363,5 +363,6 @@ const styles = StyleSheet.create({
   tr: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 14 },
   thead: { backgroundColor: colors.bg, paddingVertical: 10 },
   tbody: { maxHeight: 420 },
-  divider: { borderTopWidth: 1, borderTopColor: colors.border },
+  // Every second row light blue, so a row is easy to follow across the columns.
+  zebra: { backgroundColor: colors.primarySoft },
 });
