@@ -17,7 +17,16 @@ export class ApiError extends Error {
   }
 }
 
-type Init = { method?: string; body?: unknown; auth?: boolean; query?: Record<string, string | number | undefined> };
+type Init = {
+  method?: string;
+  body?: unknown;
+  auth?: boolean;
+  query?: Record<string, string | number | undefined>;
+  /** How long to wait for the server before giving up. Default REQUEST_TIMEOUT_MS. */
+  timeoutMs?: number;
+};
+
+const REQUEST_TIMEOUT_MS = 30_000;
 
 // Called when the session can't be refreshed; AuthProvider sets it to sign the user out.
 let onSessionExpired: () => void = () => {};
@@ -46,32 +55,47 @@ async function send(path: string, init: Init) {
         .join('&')
     : '';
 
+  // A request on a bad network must fail with a message instead of leaving a spinner on screen forever.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? REQUEST_TIMEOUT_MS);
   try {
     return await fetch(`${BASE_URL}${path}${qs}`, {
       method: init.method ?? 'GET',
       headers,
       body: init.body ? JSON.stringify(init.body) : undefined,
+      signal: controller.signal,
     });
   } catch {
-    throw new ApiError(`Cannot reach the server at ${BASE_URL}. Is the backend running and on the same Wi-Fi?`, 0);
+    throw new ApiError(
+      controller.signal.aborted
+        ? 'The server is taking too long to respond. Check your internet connection and try again.'
+        : 'Cannot connect to the server. Check your internet connection and try again.',
+      0,
+    );
+  } finally {
+    clearTimeout(timer);
   }
 }
 
+/** ok: new tokens saved. rejected: the server refused the refresh token (log out). failed: no network or a server error (stay signed in). */
+type RefreshResult = 'ok' | 'rejected' | 'failed';
+
 // Refresh tokens are single-use on the backend, so share one in-flight refresh between callers.
-let refreshing: Promise<boolean> | null = null;
+let refreshing: Promise<RefreshResult> | null = null;
 function refreshTokens() {
-  refreshing ??= (async () => {
+  refreshing ??= (async (): Promise<RefreshResult> => {
     try {
       const refreshToken = await SecureStore.getItemAsync(TOKEN_KEYS.refresh);
-      if (!refreshToken) return false;
+      if (!refreshToken) return 'rejected';
       const res = await send('/auth/refresh', { method: 'POST', body: { refreshToken }, auth: false });
-      if (!res.ok) return false;
+      // Only a 4xx means the session is really over. A 5xx or a gateway error must not sign the person out.
+      if (!res.ok) return res.status >= 400 && res.status < 500 ? 'rejected' : 'failed';
       const json = (await res.json()) as { data: { accessToken: string; refreshToken: string } };
       await SecureStore.setItemAsync(TOKEN_KEYS.access, json.data.accessToken);
       await SecureStore.setItemAsync(TOKEN_KEYS.refresh, json.data.refreshToken);
-      return true;
+      return 'ok';
     } catch {
-      return false;
+      return 'failed';
     } finally {
       refreshing = null;
     }
@@ -85,11 +109,12 @@ export async function api<T>(path: string, init: Init = {}): Promise<T> {
 
   // Access token expired (1h): refresh once and retry.
   if (res.status === 401 && init.auth !== false) {
-    if (await refreshTokens()) res = await send(path, init);
-    else {
+    const refreshed = await refreshTokens();
+    if (refreshed === 'ok') res = await send(path, init);
+    else if (refreshed === 'rejected') {
       onSessionExpired();
       throw new ApiError('Session expired. Please log in again.', 401);
-    }
+    } else throw new ApiError('Cannot connect to the server. Check your internet connection and try again.', 0);
   }
 
   const json = (await res.json().catch(() => null)) as { message?: string; code?: string; data?: T } | null;

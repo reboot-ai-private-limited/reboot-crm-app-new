@@ -121,8 +121,9 @@ export function SectionHeader({ title, link, onPress }: { title: string; link?: 
 }
 
 export function Avatar({ name, size = 44 }: { name: string; size?: number }) {
-  const initials = name
-    .split(' ')
+  const initials = (name || '?')
+    .trim()
+    .split(/\s+/)
     .map((w) => w[0])
     .slice(0, 2)
     .join('')

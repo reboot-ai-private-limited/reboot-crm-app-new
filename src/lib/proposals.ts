@@ -119,6 +119,8 @@ export async function generateProposal(input: {
   const res = await api<{ content?: Generated } & Generated>('/proposals/generate-ai', {
     method: 'POST',
     body: input,
+    // AI writing can take a while; the default 30 s would cut it off.
+    timeoutMs: 120_000,
   });
   // The endpoint wraps its result as { content: { aiContent, sections, ... } }.
   const data: Generated = res.content && typeof res.content === 'object' ? (res.content as Generated) : res;

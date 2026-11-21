@@ -97,6 +97,28 @@ export function refreshUnreadCount() {
 
 const POLL_MS = 30_000;
 
+// One poller for the whole app, however many screens show the count (the tab bar and every screen's bell). It starts with the
+// first user and stops with the last, so the tabs kept mounted in the background do not each poll the server.
+let users = 0;
+let stopPolling: (() => void) | null = null;
+
+function startPolling() {
+  let alive = true;
+  const refresh = () => {
+    api<{ unread: number }>('/notifications/unread-count')
+      .then((r) => alive && setUnreadCount(r.unread))
+      .catch(() => {}); // a missed refresh is fine; the next one catches up
+  };
+  refresh();
+  const timer = setInterval(() => AppState.currentState === 'active' && refresh(), POLL_MS);
+  const sub = AppState.addEventListener('change', (s) => s === 'active' && refresh());
+  return () => {
+    alive = false;
+    clearInterval(timer);
+    sub.remove();
+  };
+}
+
 /** Unread notifications, kept fresh while the app is open. Pass enabled=false to do nothing. */
 export function useUnreadCount(enabled: boolean) {
   const [count, setCount] = useState(unreadCount);
@@ -104,21 +126,14 @@ export function useUnreadCount(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
     listeners.add(setCount);
-    let alive = true;
-    const refresh = () => {
-      api<{ unread: number }>('/notifications/unread-count')
-        .then((r) => alive && setUnreadCount(r.unread))
-        .catch(() => {}); // a missed refresh is fine; the next one catches up
-    };
-    refresh();
-    const timer = setInterval(() => AppState.currentState === 'active' && refresh(), POLL_MS);
-    const sub = AppState.addEventListener('change', (s) => s === 'active' && refresh());
+    if (users++ === 0) stopPolling = startPolling();
     return () => {
-      alive = false;
       listeners.delete(setCount);
-      unreadCount = 0; // the next person to log in must not briefly see this count
-      clearInterval(timer);
-      sub.remove();
+      if (--users === 0) {
+        stopPolling?.();
+        stopPolling = null;
+        unreadCount = 0; // signed out: the next person to log in must not briefly see this count
+      }
     };
   }, [enabled]);
 
