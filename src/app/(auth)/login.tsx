@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 
@@ -9,6 +10,10 @@ import { Field, Screen } from '@/components/ui/layout';
 import { useAuth } from '@/store/auth';
 
 const logo = require('@/assets/images/logoIcon.jpg');
+
+// Opened in an in-app browser. The Privacy Policy must match the URL entered in App Store Connect.
+const TERMS_URL = 'https://rebootai.in/terms-and-conditions';
+const PRIVACY_URL = 'https://rebootai.in/privacy-policy';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -62,7 +67,15 @@ export default function LoginScreen() {
           ) : null}
           <Button label={sending ? 'Sending…' : 'Send OTP'} icon="send" onPress={valid && !sending ? onSend : undefined} />
           <AppText variant="caption" color="textSubtle" align="center">
-            By continuing you agree to the Terms and Privacy Policy.
+            By continuing you agree to the{' '}
+            <AppText variant="caption" color="primary" weight="600" accessibilityRole="link" onPress={() => WebBrowser.openBrowserAsync(TERMS_URL)}>
+              Terms
+            </AppText>{' '}
+            and{' '}
+            <AppText variant="caption" color="primary" weight="600" accessibilityRole="link" onPress={() => WebBrowser.openBrowserAsync(PRIVACY_URL)}>
+              Privacy Policy
+            </AppText>
+            .
           </AppText>
         </View>
       </Screen>
